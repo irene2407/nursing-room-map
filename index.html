@@ -58,7 +58,9 @@
   .chip.on::before { content: "✓"; font-weight: 700; margin-right: 2px; }
   /* 하나만 고르는 종류 버튼 */
   .seg { display: flex; margin-top: 8px; background: var(--card); border-radius: 12px; padding: 3px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-  .seg button { flex: 1; height: 32px; border-radius: 9px; font-size: 14px; color: var(--sub); display: flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; }
+  .seg button { flex: 1; height: 42px; border-radius: 9px; font-size: 14px; color: var(--sub); display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.2; white-space: nowrap; }
+  .seg button span { display: flex; align-items: center; gap: 5px; }
+  .seg button small { font-size: 11px; opacity: .8; margin-top: 1px; }
   .seg button.on { background: var(--ink); color: #fff; font-weight: 600; }
   .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
   .seg button.on .dot { box-shadow: 0 0 0 1.5px #fff; }
@@ -152,12 +154,11 @@
     <button type="button" id="qClear" aria-label="지우기">✕</button>
   </form>
   <div class="seg" id="seg" role="radiogroup" aria-label="수유실 종류">
-    <button class="on" data-type="all" role="radio">모든 수유실</button>
-    <button data-type="family" role="radio"><i class="dot" style="background:var(--family)"></i>가족수유실</button>
-    <button data-type="breast" role="radio"><i class="dot" style="background:var(--breast)"></i>모유·착유실</button>
+    <button class="on" data-type="all" role="radio"><span>모든 수유실</span></button>
+    <button data-type="family" role="radio"><span><i class="dot" style="background:var(--family)"></i>가족수유실</span><small>아빠 OK</small></button>
+    <button data-type="breast" role="radio"><span><i class="dot" style="background:var(--breast)"></i>모유·착유실</span><small>엄마 전용</small></button>
   </div>
   <div class="chips" id="chips">
-    <button class="chip" data-toggle="father">👨 아빠 이용 가능</button>
     <button class="chip" data-toggle="toilets">🚼 기저귀 화장실</button>
     <button class="chip" data-toggle="fav">⭐ 즐겨찾기</button>
   </div>
@@ -181,7 +182,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '2026.11.19b';
+const APP_VERSION = '2026.11.19c';
 const KAKAO_JS_KEY = 'd34d91c8d1966bf88d70da960b850c56';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청
 const LS_FAV = 'nursing-map-v1-fav';
@@ -195,7 +196,6 @@ const state = {
   data: null,
   items: [],                 // 수유실 + 지하철 + 화장실
   type: 'all',               // all | family | breast
-  father: false,
   toilets: false,
   fav: false,
   query: '',
@@ -211,11 +211,11 @@ function loadLocal() {
   try {
     const f = JSON.parse(localStorage.getItem(LS_FILTER) || '{}');
     if (['all', 'family', 'breast'].includes(f.type)) state.type = f.type;
-    state.father = !!f.father; state.toilets = !!f.toilets;
+    state.toilets = !!f.toilets;
   } catch (e) {}
 }
 function saveFavs() { try { localStorage.setItem(LS_FAV, JSON.stringify([...state.favs])); } catch (e) {} }
-function saveFilter() { try { localStorage.setItem(LS_FILTER, JSON.stringify({ type: state.type, father: state.father, toilets: state.toilets })); } catch (e) {} }
+function saveFilter() { try { localStorage.setItem(LS_FILTER, JSON.stringify({ type: state.type, toilets: state.toilets })); } catch (e) {} }
 
 /* ---------- 거리 ---------- */
 function dist(a, b) {
@@ -254,7 +254,8 @@ function tagsHtml(it) {
   else {
     if (it.kind === 'subway') t.push('<span class="tag subway">🚇 지하철역</span>');
     if (it.type) t.push(`<span class="tag ${esc(it.type)}">${esc(TYPE_NAME[it.type] || it.type)}</span>`);
-    if (it.father === true) t.push('<span class="tag dad">👨 아빠 가능</span>');
+    if (it.type === 'family' || it.father === true) t.push('<span class="tag dad">👨 아빠 OK</span>');
+    else if (it.type === 'breast') t.push('<span class="tag">엄마 전용</span>');
   }
   if (state.favs.has(it.id)) t.push('<span class="tag">⭐ 즐겨찾기</span>');
   return t.join('');
@@ -273,7 +274,6 @@ function visibleItems() {
       // 수유실 종류·아빠 필터는 화장실에는 적용하지 않음
     } else {
       if (state.type !== 'all' && it.type !== state.type) return false;
-      if (state.father && it.father !== true) return false;
     }
     if (state.fav && !state.favs.has(it.id)) return false;
     return true;
@@ -288,7 +288,7 @@ function renderList() {
   arr = arr.map((it) => ({ it, d: dist(o, it) })).sort((a, b) => a.d - b.d);
 
   const title = $('#sheetTitle');
-  const label = state.query ? `‘${esc(state.query)}’ 검색 결과` : state.fav ? '즐겨찾기' : state.toilets && state.type === 'all' && !state.father ? '가까운 수유실·화장실' : '가까운 수유실';
+  const label = state.query ? `‘${esc(state.query)}’ 검색 결과` : state.fav ? '즐겨찾기' : state.toilets && state.type === 'all' ? '가까운 수유실·화장실' : '가까운 수유실';
   title.innerHTML = `${label} <small id="count">${arr.length.toLocaleString()}곳</small>`;
 
   const list = $('#list');
@@ -547,8 +547,8 @@ function openInfo() {
     <h2>수유실 지도 안내</h2>
     <div class="info">
       <div class="legend">
-        <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--family);display:inline-block"></i>가족수유실 (아빠도 들어갈 수 있는 곳이 많아요)</div>
-        <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--breast);display:inline-block"></i>모유수유·착유실</div>
+        <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--family);display:inline-block"></i>가족수유실 · 아빠도 들어갈 수 있어요</div>
+        <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--breast);display:inline-block"></i>모유수유·착유실 · 엄마 전용</div>
         <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--subway);display:inline-block"></i>지하철역 수유실</div>
         <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--toilet);display:inline-block"></i>기저귀 교환대 화장실</div>
         <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--fav);display:inline-block"></i>즐겨찾기</div>
@@ -591,7 +591,6 @@ function bind() {
     const k = b.dataset.toggle;
     state[k] = !state[k];
     const msg = {
-      father: state.father ? '아빠도 들어갈 수 있는 곳만 보여요' : '아빠 조건을 껐어요',
       toilets: state.toilets ? (state.items.some((x) => x.kind === 'toilet') ? '기저귀 교환대 화장실도 같이 보여요' : '아직 기저귀 화장실 자료가 없어요') : '기저귀 화장실을 숨겼어요',
       fav: state.fav ? '즐겨찾기한 곳만 보여요' : '즐겨찾기 조건을 껐어요',
     }[k];
