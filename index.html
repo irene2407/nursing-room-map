@@ -53,8 +53,15 @@
   .chips::-webkit-scrollbar { display: none; }
   .chip { flex: none; height: 34px; padding: 0 12px; border-radius: 17px; background: var(--card); font-size: 14px; color: var(--sub);
     box-shadow: 0 1px 4px rgba(0,0,0,.08); white-space: nowrap; display: flex; align-items: center; gap: 4px; }
-  .chip.on { background: var(--ink); color: #fff; }
-  .chip .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  /* 켜고 끄는 조건 버튼: 켜지면 코랄 테두리 + ✓ */
+  .chip.on { background: #FFE8E1; color: #B8432A; box-shadow: inset 0 0 0 1.5px var(--accent), 0 1px 4px rgba(0,0,0,.06); font-weight: 600; }
+  .chip.on::before { content: "✓"; font-weight: 700; margin-right: 2px; }
+  /* 하나만 고르는 종류 버튼 */
+  .seg { display: flex; margin-top: 8px; background: var(--card); border-radius: 12px; padding: 3px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .seg button { flex: 1; height: 32px; border-radius: 9px; font-size: 14px; color: var(--sub); display: flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; }
+  .seg button.on { background: var(--ink); color: #fff; font-weight: 600; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+  .seg button.on .dot { box-shadow: 0 0 0 1.5px #fff; }
 
   #notice { margin-top: 6px; font-size: 12.5px; color: #8A4B2E; background: #FFE9DE; border-radius: 10px; padding: 7px 10px; display: none; line-height: 1.45; }
 
@@ -123,7 +130,7 @@
   .info .legend div { display: flex; align-items: center; gap: 8px; }
   .info .ver { color: #B3A59E; font-size: 12px; text-align: center; margin-top: 16px; }
 
-  #toast { position: fixed; left: 50%; top: calc(var(--safe-t) + 150px); transform: translateX(-50%); z-index: 60; background: rgba(40,30,25,.92); color: #fff;
+  #toast { position: fixed; left: 50%; top: 42%; transform: translateX(-50%); z-index: 60; background: rgba(40,30,25,.92); color: #fff;
     padding: 10px 16px; border-radius: 20px; font-size: 14px; max-width: 88vw; text-align: center; opacity: 0; pointer-events: none; transition: opacity .2s; }
   #toast.show { opacity: 1; }
 </style>
@@ -144,10 +151,12 @@
     <input id="q" type="search" enterkeyhint="search" placeholder="수유실 이름이나 지역 (예: 해운대, 스타필드)">
     <button type="button" id="qClear" aria-label="지우기">✕</button>
   </form>
+  <div class="seg" id="seg" role="radiogroup" aria-label="수유실 종류">
+    <button class="on" data-type="all" role="radio">모든 수유실</button>
+    <button data-type="family" role="radio"><i class="dot" style="background:var(--family)"></i>가족수유실</button>
+    <button data-type="breast" role="radio"><i class="dot" style="background:var(--breast)"></i>모유·착유실</button>
+  </div>
   <div class="chips" id="chips">
-    <button class="chip on" data-type="all">전체</button>
-    <button class="chip" data-type="family"><i class="dot" style="background:var(--family)"></i>가족수유실</button>
-    <button class="chip" data-type="breast"><i class="dot" style="background:var(--breast)"></i>모유수유·착유실</button>
     <button class="chip" data-toggle="father">👨 아빠 이용 가능</button>
     <button class="chip" data-toggle="toilets">🚼 기저귀 화장실</button>
     <button class="chip" data-toggle="fav">⭐ 즐겨찾기</button>
@@ -172,7 +181,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '2026.11.19';
+const APP_VERSION = '2026.11.19b';
 const KAKAO_JS_KEY = 'd34d91c8d1966bf88d70da960b850c56';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청
 const LS_FAV = 'nursing-map-v1-fav';
@@ -559,21 +568,34 @@ function toast(msg) {
 
 /* ---------- 필터 버튼 ---------- */
 function syncChips() {
+  document.querySelectorAll('#seg button').forEach((b) => {
+    const on = b.dataset.type === state.type;
+    b.classList.toggle('on', on); b.setAttribute('aria-checked', on);
+  });
   document.querySelectorAll('#chips .chip').forEach((b) => {
-    if (b.dataset.type) b.classList.toggle('on', b.dataset.type === state.type);
-    if (b.dataset.toggle) b.classList.toggle('on', !!state[b.dataset.toggle]);
+    const on = !!state[b.dataset.toggle];
+    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
   });
 }
 
 /* ---------- 이벤트 ---------- */
 function bind() {
+  $('#seg').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-type]'); if (!b || b.dataset.type === state.type) return;
+    state.type = b.dataset.type;
+    state.shown = PAGE;
+    syncChips(); saveFilter(); renderList(); renderMarkers();
+  });
   $('#chips').addEventListener('click', (e) => {
-    const b = e.target.closest('.chip'); if (!b) return;
-    if (b.dataset.type) state.type = b.dataset.type;
-    if (b.dataset.toggle) {
-      state[b.dataset.toggle] = !state[b.dataset.toggle];
-      if (b.dataset.toggle === 'toilets' && state.toilets && !state.items.some((x) => x.kind === 'toilet')) toast('아직 기저귀 화장실 자료가 없어요');
-    }
+    const b = e.target.closest('.chip'); if (!b || !b.dataset.toggle) return;
+    const k = b.dataset.toggle;
+    state[k] = !state[k];
+    const msg = {
+      father: state.father ? '아빠도 들어갈 수 있는 곳만 보여요' : '아빠 조건을 껐어요',
+      toilets: state.toilets ? (state.items.some((x) => x.kind === 'toilet') ? '기저귀 교환대 화장실도 같이 보여요' : '아직 기저귀 화장실 자료가 없어요') : '기저귀 화장실을 숨겼어요',
+      fav: state.fav ? '즐겨찾기한 곳만 보여요' : '즐겨찾기 조건을 껐어요',
+    }[k];
+    if (msg) toast(msg);
     state.shown = PAGE;
     syncChips(); saveFilter(); renderList(); renderMarkers();
   });
