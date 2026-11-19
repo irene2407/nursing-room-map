@@ -38,7 +38,9 @@
 
   /* 위쪽 */
   #top { position: fixed; left: 0; right: 0; top: 0; z-index: 20; padding: calc(var(--safe-t) + 10px) 12px 8px;
-    background: linear-gradient(var(--bg) 70%, rgba(255,248,244,0)); }
+    background: linear-gradient(var(--bg) 70%, rgba(255,248,244,0)); pointer-events: none; }
+  #top > * { pointer-events: auto; }
+  .titlebar h1 { pointer-events: none; }
   .titlebar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
   .titlebar img { width: 28px; height: 28px; border-radius: 8px; }
   .titlebar h1 { font-size: 18px; margin: 0; letter-spacing: -0.3px; flex: 1; }
@@ -132,6 +134,9 @@
   .hint { font-size: 12.5px; color: var(--sub); background: #FFF4EC; border-radius: 10px; padding: 9px 11px; margin-top: 12px; line-height: 1.5; }
   .linkish { display: block; text-align: center; color: var(--sub); font-size: 13px; margin-top: 12px; text-decoration: underline; }
   .info p { font-size: 14px; line-height: 1.6; margin: 8px 0; }
+  .group-sub { font-size: 13.5px; color: var(--sub); margin: 0 0 6px; line-height: 1.5; }
+  .modal .item { padding: 12px 2px; }
+  .sib { display: block; width: 100%; margin-top: 10px; padding: 11px; border-radius: 12px; background: #FFF4EC; color: var(--accent-dark); font-weight: 600; font-size: 14px; text-align: center; }
   .info .legend { display: grid; gap: 8px; margin: 12px 0; font-size: 14px; }
   .info .legend div { display: flex; align-items: center; gap: 8px; }
   .info .ver { color: #B3A59E; font-size: 12px; text-align: center; margin-top: 16px; }
@@ -186,7 +191,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '2026.11.19e';
+const APP_VERSION = '2026.11.19f';
 const KAKAO_JS_KEY = 'd34d91c8d1966bf88d70da960b850c56';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청
 const LS_FAV = 'nursing-map-v1-fav';
@@ -206,7 +211,10 @@ const state = {
   me: null,                  // 내 위치
   shown: PAGE,
   favs: new Set(),
+  byId: new Map(),
 };
+const LS_DATA = 'nursing-map-v1-data';
+const SAME_SPOT = 15;        // 이 거리(m) 안이면 같은 건물로 봄
 
 /* ---------- 저장 ---------- */
 function loadLocal() {
@@ -234,6 +242,11 @@ function fmtDist(m) {
 }
 
 /* ---------- 표시용 ---------- */
+function telOf(s) {   // 여러 번호가 적혀 있어도 첫 번호만
+  const m = String(s || '').match(/(?:\+82[-.\s]?)?0\d{1,2}[-.)\s]*\d{3,4}[-.\s]*\d{4}|1[5-9]\d{2}[-.\s]*\d{4}/);
+  return m ? m[0].replace(/[^0-9+]/g, '') : '';
+}
+function favIds() { return [...state.favs].filter((id) => state.byId.has(id)); }
 const TYPE_NAME = { family: '가족수유실', breast: '모유수유·착유실' };
 function colorOf(it) {
   if (state.favs.has(it.id)) return getVar('--fav');
@@ -289,7 +302,8 @@ function renderList() {
   arr = arr.map((it) => ({ it, d: dist(o, it) })).sort((a, b) => a.d - b.d);
 
   $('#count').textContent = (state.query ? `‘${state.query}’ ` : '') + arr.length.toLocaleString() + '곳';
-  $('#favCount').textContent = state.favs.size ? ' ' + state.favs.size : '';
+  const fc = favIds().length;
+  $('#favCount').textContent = fc ? ' ' + fc : '';
 
   // 위쪽 안내 (B: 수유실이 멀면 기저귀 화장실 먼저 알려 주기)
   let top = '';
@@ -361,7 +375,7 @@ function markerFor(it) {
   let m = markers.get(it.id);
   if (!m) {
     m = new kakao.maps.Marker({ position: new kakao.maps.LatLng(it.lat, it.lng), title: it.name, image: markerImage(colorOf(it), it.kind === 'toilet') });
-    kakao.maps.event.addListener(m, 'click', () => openDetail(it.id));
+    kakao.maps.event.addListener(m, 'click', () => openSpot(it.id));
     markers.set(it.id, m);
   }
   return m;
@@ -370,10 +384,15 @@ function refreshMarkerImage(it) {
   const m = markers.get(it.id);
   if (m) m.setImage(markerImage(colorOf(it), it.kind === 'toilet'));
 }
+const CLUSTER_COLOR = { rooms: 'rgba(255,122,92,.88)', toilets: 'rgba(20,163,139,.88)', fav: 'rgba(242,169,0,.92)' };
+function clusterStyle(bg) {
+  return [{ width: '38px', height: '38px', background: bg, borderRadius: '19px', color: '#fff', textAlign: 'center', fontWeight: '700', lineHeight: '38px', fontSize: '13px', border: '2px solid #fff' }];
+}
 function renderMarkers() {
   if (!map) return;
   const vis = visibleItems();
   clusterer.clear();
+  if (clusterer.setStyles) clusterer.setStyles(clusterStyle(CLUSTER_COLOR[state.tab] || CLUSTER_COLOR.rooms));
   clusterer.addMarkers(vis.map(markerFor));
 }
 function panTo(lat, lng, level) {
@@ -401,7 +420,7 @@ function initMap() {
   map = new kakao.maps.Map($('#map'), { center: new kakao.maps.LatLng(c.lat, c.lng), level: 5 });
   clusterer = new kakao.maps.MarkerClusterer({
     map, averageCenter: true, minLevel: 7, gridSize: 50, disableClickZoom: false,
-    styles: [{ width: '38px', height: '38px', background: 'rgba(255,122,92,.88)', borderRadius: '19px', color: '#fff', textAlign: 'center', fontWeight: '700', lineHeight: '38px', fontSize: '13px', border: '2px solid #fff' }]
+    styles: clusterStyle(CLUSTER_COLOR.rooms)
   });
   renderMarkers();
   showMe();
@@ -424,16 +443,27 @@ function loadKakao() {
     s.onload = () => { try { kakao.maps.load(resolve); } catch (e) { reject(e); } };
     s.onerror = reject;
     document.head.appendChild(s);
-    setTimeout(() => reject(new Error('timeout')), 15000);
+    setTimeout(() => reject(new Error('timeout')), 20000);
   });
 }
 
 /* ---------- 내 위치 ---------- */
-function locate(fromButton) {
+let lastLocate = 0;
+function locate(fromButton, quiet) {
   if (!navigator.geolocation) { if (fromButton) toast('이 폰에서는 위치를 쓸 수 없어요'); fallbackOrigin(); return; }
+  lastLocate = Date.now();
   if (fromButton) toast('내 위치를 찾는 중…');
   navigator.geolocation.getCurrentPosition((p) => {
+    const prevKind = state.origin && state.origin.kind;
     state.me = { lat: p.coords.latitude, lng: p.coords.longitude };
+    if (quiet && prevKind && !['me', 'default'].includes(prevKind)) {
+      // 다른 곳을 보고 있으면 파란 점만 옮기고 화면은 그대로
+      showMe(); setOriginLabel(); return;
+    }
+    if (quiet && prevKind === 'me') {
+      state.origin = { ...state.me, kind: 'me', label: '📍 내 위치 기준 · 가까운 순' };
+      showMe(); setOriginLabel(); renderList(); return;
+    }
     state.origin = { ...state.me, kind: 'me', label: '📍 내 위치 기준 · 가까운 순' };
     state.shown = PAGE;
     $('#meBtn').classList.add('active');
@@ -442,6 +472,7 @@ function locate(fromButton) {
     if (placeOverlay) { placeOverlay.setMap(null); placeOverlay = null; }
     setOriginLabel(); renderList();
   }, (err) => {
+    if (quiet) return;
     if (fromButton || !state.origin) {
       toast(err.code === 1 ? '위치 권한이 꺼져 있어요. 설정에서 허용해 주세요' : '위치를 찾지 못했어요');
     }
@@ -464,8 +495,10 @@ function doSearch(q) {
   // 지역·장소 이름이면 그곳으로 이동
   if (window.kakao && kakao.maps && kakao.maps.services) {
     const ps = new kakao.maps.services.Places();
-    ps.keywordSearch(q, (res, status) => {
-      if (status === kakao.maps.services.Status.OK && res.length) {
+    const OK = kakao.maps.services.Status.OK;
+    const center = map ? map.getCenter() : (state.origin ? new kakao.maps.LatLng(state.origin.lat, state.origin.lng) : null);
+    const handle = (res, status) => {
+      if (status === OK && res.length) {
         const r = res[0];
         const lat = +r.y, lng = +r.x;
         state.origin = { lat, lng, kind: 'place', label: `📍 ‘${r.place_name}’ 근처 · 가까운 순` };
@@ -477,6 +510,17 @@ function doSearch(q) {
       } else {
         renderList(); setSheet('half');
       }
+    };
+    // 지역·역·명소(예: 해운대, 판교역)는 전국에서 가장 맞는 곳으로,
+    // 가게·지점 이름(예: 이마트, 스타필드)은 지금 보는 곳 20km 안의 지점을 먼저
+    const PLACE_LIKE = /지명|행정|관광|명소|교통|지하철|전철|기차|공항|해수욕장|공원|터미널/;
+    ps.keywordSearch(q, (res, status) => {
+      const top = status === OK && res.length ? res[0] : null;
+      const placeLike = top && (PLACE_LIKE.test(top.category_name || '') || top.place_name.replace(/\s/g, '') === q.replace(/\s/g, ''));
+      if (!center || placeLike) { handle(res, status); return; }
+      ps.keywordSearch(q, (r2, s2) => {
+        if (s2 === OK && r2.length) handle(r2, s2); else handle(res, status);
+      }, { size: 1, location: center, radius: 20000 });
     }, { size: 1 });
   } else {
     renderList(); setSheet('half');
@@ -611,9 +655,35 @@ function openNaver(it) {
   location.href = app;
 }
 
+function sameSpot(it, list) {   // 같은 건물(15m 안)의 같은 종류 장소 (수유실끼리, 화장실끼리)
+  const isT = it.kind === 'toilet';
+  return (list || visibleItems()).filter((x) => x.id !== it.id && (x.kind === 'toilet') === isT && dist(x, it) <= SAME_SPOT);
+}
+function openSpot(id) {   // 핀을 눌렀을 때: 같은 건물에 여러 곳이면 골라 보기
+  const it = state.byId.get(id); if (!it) return;
+  const sib = sameSpot(it);
+  if (!sib.length) { openDetail(id); return; }
+  openGroup([it, ...sib]);
+}
+function openGroup(group) {
+  const kindWord = group.every((x) => x.kind === 'toilet') ? '기저귀 화장실' : '수유실';
+  openModal(`
+    <h2>이 건물에 ${kindWord} ${group.length}곳</h2>
+    <p class="group-sub">${esc(group[0].addr || '')}</p>
+    ${group.map((x) => `
+      <button class="item" data-open="${esc(x.id)}">
+        <div class="ic" style="background:${bgOf(x)}">${emojiOf(x)}</div>
+        <div class="body">
+          <div class="nm">${esc(x.name)}</div>
+          <div class="ds">${esc(x.place || '')}</div>
+          <div class="tags">${tagsHtml(x)}</div>
+        </div>
+      </button>`).join('')}`);
+}
 function openDetail(id) {
-  const it = state.items.find((x) => x.id === id);
+  const it = state.byId.get(id);
   if (!it) return;
+  const sib = sameSpot(it, state.items);
   const o = state.me || state.origin;
   const d = o ? dist(o, it) : null;
   const fav = state.favs.has(it.id);
@@ -624,7 +694,7 @@ function openDetail(id) {
   if (it.tel) rows.push(['전화', esc(it.tel)]);
   if (d != null) rows.push(['거리', (state.me ? '내 위치에서 ' : '기준 위치에서 ') + fmtDist(d) + ' (직선)']);
   if (it.updated) rows.push(['수정일', esc(it.updated)]);
-  const tel = String(it.tel || '').replace(/[^0-9+]/g, '');
+  const tel = telOf(it.tel);
   const hint = it.kind === 'toilet'
     ? '기저귀 교환대가 있는 화장실이에요. 수유실은 아니에요.'
     : '운영시간 정보는 없어요. 기관 사정으로 바뀔 수 있으니 방문 전에 전화로 확인하면 좋아요.';
@@ -641,6 +711,7 @@ function openDetail(id) {
       <button class="btn soft" data-fav="${esc(it.id)}">${fav ? '⭐ 즐겨찾기 빼기' : '☆ 즐겨찾기'}</button>
       <button class="btn soft wide" data-show="${esc(it.id)}">🗺️ 지도에서 보기</button>
     </div>
+    ${sib.length ? `<button class="sib" data-group="${esc(it.id)}">🏢 같은 건물의 다른 곳 ${sib.length}곳 더 보기</button>` : ''}
     <div class="hint">${hint}</div>
     ${fix}`);
 }
@@ -737,22 +808,26 @@ function bind() {
   $('#dim').addEventListener('click', () => closeModal());
   $('#modal').addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) { closeModal(); return; }
+    const op = e.target.closest('[data-open]');
+    if (op) { openDetail(op.dataset.open); return; }
+    const gr = e.target.closest('[data-group]');
+    if (gr) { const it = state.byId.get(gr.dataset.group); if (it) openGroup([it, ...sameSpot(it, state.items)]); return; }
     const f = e.target.closest('[data-fav]');
     if (f) {
       const id = f.dataset.fav;
       if (state.favs.has(id)) { state.favs.delete(id); toast('즐겨찾기에서 뺐어요'); } else { state.favs.add(id); toast('⭐ 즐겨찾기에 넣었어요'); }
       saveFavs();
-      const it = state.items.find((x) => x.id === id);
+      const it = state.byId.get(id);
       if (it) refreshMarkerImage(it);
       renderList(); if (state.tab === 'fav') renderMarkers();
       openDetail(id);
       return;
     }
     const n = e.target.closest('[data-naver]');
-    if (n) { const it = state.items.find((x) => x.id === n.dataset.naver); if (it) openNaver(it); return; }
+    if (n) { const it = state.byId.get(n.dataset.naver); if (it) openNaver(it); return; }
     const s = e.target.closest('[data-show]');
     if (s) {
-      const it = state.items.find((x) => x.id === s.dataset.show);
+      const it = state.byId.get(s.dataset.show);
       closeModal();
       if (it) { setSheet('mini'); panTo(it.lat, it.lng, 3); }
     }
@@ -762,26 +837,63 @@ function bind() {
 }
 
 /* ---------- 시작 ---------- */
-async function loadData() {
-  const res = await fetch('data/places.json?v=' + Date.now(), { cache: 'no-store' });
-  if (!res.ok) throw new Error('data ' + res.status);
-  const d = await res.json();
+let lastDataText = '', lastFetch = 0;
+function applyData(d) {
   const ok = (x) => x && isFinite(+x.lat) && isFinite(+x.lng) && +x.lat > 32 && +x.lat < 39.5 && +x.lng > 124 && +x.lng < 132.5;
   const items = [];
   for (const x of (d.rooms || [])) if (ok(x)) items.push({ ...x, lat: +x.lat, lng: +x.lng, kind: x.kind || 'room' });
   for (const x of (d.toilets || [])) if (ok(x)) items.push({ ...x, lat: +x.lat, lng: +x.lng, kind: 'toilet' });
   state.data = d; state.items = items;
-  if (d.sample) {
-    const n = $('#notice'); n.style.display = 'block';
-    n.textContent = '지금은 견본 데이터 몇 곳만 보여요. 수유정보 알리미 키가 오면 전국 수유실로 바뀌어요.';
+  state.byId = new Map(items.map((x) => [x.id, x]));
+  // 자료가 바뀌면 지도 핀도 새로
+  if (clusterer) clusterer.clear();
+  markers.clear();
+  // 3. 없어진 곳(견본 등)은 즐겨찾기에서 정리
+  if (!d.sample && items.length >= 500) {
+    let changed = false;
+    for (const id of [...state.favs]) if (!state.byId.has(id)) { state.favs.delete(id); changed = true; }
+    if (changed) saveFavs();
+  }
+  const n = $('#notice');
+  n.style.display = d.sample ? 'block' : 'none';
+  if (d.sample) n.textContent = '지금은 견본 데이터 몇 곳만 보여요. 수유정보 알리미 키가 오면 전국 수유실로 바뀌어요.';
+  renderList(); renderMarkers();
+}
+async function loadData(quiet) {
+  // 1) 폰에 저장해 둔 자료로 먼저 빠르게 보여 주기
+  if (!lastDataText) {
+    try {
+      const cached = localStorage.getItem(LS_DATA);
+      if (cached) { applyData(JSON.parse(cached)); lastDataText = cached; }
+    } catch (e) {}
+  }
+  // 2) 새 자료가 있는지 확인 (바뀌지 않았으면 서버가 '그대로'라고만 답해서 데이터를 거의 안 씀)
+  try {
+    const res = await fetch('data/places.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error('data ' + res.status);
+    const text = await res.text();
+    lastFetch = Date.now();
+    if (text !== lastDataText) {
+      applyData(JSON.parse(text));
+      lastDataText = text;
+      try { localStorage.setItem(LS_DATA, text); } catch (e) {}
+    }
+  } catch (e) {
+    if (!lastDataText) throw e;
+    if (!quiet) toast(`인터넷이 약해서 폰에 저장된 자료를 보여줘요 (${(state.data && state.data.updated) || ''} 기준)`);
   }
 }
 
 (async function start() {
   loadLocal(); syncChips(); bind(); setSheet('half');
   try { await loadData(); } catch (e) { $('#list').innerHTML = '<div class="empty">수유실 자료를 불러오지 못했어요.<br>인터넷 연결을 확인하고 다시 열어 주세요.</div>'; }
-  renderList();
   locate(false);
+  // 6. 앱을 다시 열면 내 위치(1분 지났으면)와 자료(1시간 지났으면) 다시 확인
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (Date.now() - lastLocate > 60 * 1000) locate(false, true);
+    if (Date.now() - lastFetch > 60 * 60 * 1000) loadData(true).catch(() => {});
+  });
   try {
     await loadKakao();
     initMap();
