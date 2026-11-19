@@ -76,7 +76,7 @@
 
   /* 아래 목록 */
   #sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 18; background: var(--card); border-radius: 20px 20px 0 0;
-    box-shadow: 0 -4px 20px rgba(60,30,10,.12); display: flex; flex-direction: column; height: 40vh; transition: height .25s ease;
+    box-shadow: 0 -4px 20px rgba(60,30,10,.12); display: flex; flex-direction: column; height: var(--half, 40vh); transition: height .25s ease;
     padding-bottom: var(--safe-b); }
   #sheet.mini { height: calc(112px + var(--safe-b)); }
   #sheet.full { height: 86vh; z-index: 25; }
@@ -103,7 +103,8 @@
   .item .body { flex: 1; min-width: 0; }
   .item .nm { font-size: 15px; font-weight: 600; line-height: 1.35; }
   .item .ds { font-size: 12.5px; color: var(--sub); margin-top: 2px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .item .dist { flex: none; font-size: 13px; font-weight: 600; color: var(--accent-dark); padding-top: 2px; }
+  .item .dist { flex: none; font-size: 13px; font-weight: 600; color: var(--accent-dark); padding-top: 2px; text-align: right; }
+  .item .dist small { display: block; font-size: 11.5px; font-weight: 500; color: var(--sub); margin-top: 3px; }
   .tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
   .tag { font-size: 11.5px; padding: 2px 7px; border-radius: 8px; background: #F6EEE9; color: var(--sub); }
   .tag.family { background: #FFE8E1; color: #C2482B; }
@@ -191,7 +192,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '2026.11.19f';
+const APP_VERSION = '2026.11.19g';
 const KAKAO_JS_KEY = 'd34d91c8d1966bf88d70da960b850c56';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청
 const LS_FAV = 'nursing-map-v1-fav';
@@ -233,6 +234,14 @@ function dist(a, b) {
   const dLat = (b.lat - a.lat) * toR, dLng = (b.lng - a.lng) * toR;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * toR) * Math.cos(b.lat * toR) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
+}
+function walkMin(m) {
+  // 직선거리 × 1.3(실제 길은 돌아감) ÷ 분당 60m(유모차·아기 안고 천천히)
+  return Math.max(1, Math.round(m * 1.3 / 60));
+}
+function fmtWalk(m) {
+  if (m == null || !isFinite(m) || m > 3000) return '';
+  return '🚶 ' + walkMin(m) + '분';
 }
 function fmtDist(m) {
   if (m == null || !isFinite(m)) return '';
@@ -342,7 +351,7 @@ function renderList() {
         <div class="ds">${esc(it.place || it.addr || '')}</div>
         <div class="tags">${tagsHtml(it)}</div>
       </div>
-      <div class="dist">${fmtDist(d)}</div>
+      <div class="dist">${fmtDist(d)}${fmtWalk(d) ? `<small>${fmtWalk(d)}</small>` : ''}</div>
     </button>`).join('');
   list.innerHTML = top + html + (arr.length > state.shown ? `<button class="more" id="moreBtn">더 보기 (${(arr.length - state.shown).toLocaleString()}곳 더)</button>` : '');
 }
@@ -362,10 +371,11 @@ const markers = new Map();   // id -> marker
 const imgCache = new Map();
 let suppressIdle = 0;
 
-function markerImage(color, small) {
-  const key = color + (small ? 's' : '');
+let selectedId = null;
+function markerImage(color, small, big) {
+  const key = color + (small ? 's' : '') + (big ? 'b' : '');
   if (imgCache.has(key)) return imgCache.get(key);
-  const w = small ? 22 : 28, h = small ? 29 : 37;
+  const w = big ? 40 : small ? 22 : 28, h = big ? 53 : small ? 29 : 37;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 28 37"><path d="M14 36s12-12.6 12-21.5C26 7 20.6 2 14 2S2 7 2 14.5C2 23.4 14 36 14 36z" fill="${color}" stroke="#fff" stroke-width="2.4"/><circle cx="14" cy="14.5" r="4.6" fill="#fff"/></svg>`;
   const img = new kakao.maps.MarkerImage('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg), new kakao.maps.Size(w, h), { offset: new kakao.maps.Point(w / 2, h - 1) });
   imgCache.set(key, img);
@@ -374,7 +384,8 @@ function markerImage(color, small) {
 function markerFor(it) {
   let m = markers.get(it.id);
   if (!m) {
-    m = new kakao.maps.Marker({ position: new kakao.maps.LatLng(it.lat, it.lng), title: it.name, image: markerImage(colorOf(it), it.kind === 'toilet') });
+    m = new kakao.maps.Marker({ position: new kakao.maps.LatLng(it.lat, it.lng), title: it.name, image: markerImage(colorOf(it), it.kind === 'toilet', it.id === selectedId) });
+    if (it.id === selectedId) m.setZIndex && m.setZIndex(10);
     kakao.maps.event.addListener(m, 'click', () => openSpot(it.id));
     markers.set(it.id, m);
   }
@@ -382,7 +393,18 @@ function markerFor(it) {
 }
 function refreshMarkerImage(it) {
   const m = markers.get(it.id);
-  if (m) m.setImage(markerImage(colorOf(it), it.kind === 'toilet'));
+  if (!m) return;
+  const sel = it.id === selectedId;
+  m.setImage(markerImage(colorOf(it), it.kind === 'toilet', sel));
+  if (m.setZIndex) m.setZIndex(sel ? 10 : 0);
+}
+function selectMarker(id) {
+  if (selectedId === id) return;
+  const prev = selectedId && state.byId.get(selectedId);
+  selectedId = id;
+  if (prev) refreshMarkerImage(prev);
+  const cur = state.byId.get(id);
+  if (cur) refreshMarkerImage(cur);
 }
 const CLUSTER_COLOR = { rooms: 'rgba(255,122,92,.88)', toilets: 'rgba(20,163,139,.88)', fav: 'rgba(242,169,0,.92)' };
 function clusterStyle(bg) {
@@ -535,6 +557,16 @@ function setSheet(mode) {
   if (mode === 'mini' || mode === 'full') s.classList.add(mode);
   requestAnimationFrame(placeFab);
 }
+function halfHeight() {
+  // 지도가 위쪽 영역 아래로 최소 150px은 보이게, 목록은 최소 220px
+  const vh = window.innerHeight;
+  const topBottom = $('#top').getBoundingClientRect().bottom;
+  return Math.round(Math.max(220, Math.min(vh * 0.40, vh - topBottom - 150)));
+}
+function fitSheet() {
+  document.documentElement.style.setProperty('--half', halfHeight() + 'px');
+  placeFab();
+}
 function placeFab() {
   const h = $('#sheet').getBoundingClientRect().height;
   $('#meBtn').style.bottom = (h + 12) + 'px';
@@ -547,7 +579,7 @@ function bindDrag() {
   let sd = null;
   const heights = () => {
     const vh = window.innerHeight;
-    return { mini: 112, half: vh * 0.40, full: vh * 0.86 };
+    return { mini: 112, half: halfHeight(), full: vh * 0.86 };
   };
   function sStart(y, fromList) { sd = { y0: y, h0: sheet.getBoundingClientRect().height, moved: false, fromList }; }
   function sMove(y, e) {
@@ -684,6 +716,7 @@ function openDetail(id) {
   const it = state.byId.get(id);
   if (!it) return;
   const sib = sameSpot(it, state.items);
+  selectMarker(it.id);
   const o = state.me || state.origin;
   const d = o ? dist(o, it) : null;
   const fav = state.favs.has(it.id);
@@ -692,7 +725,7 @@ function openDetail(id) {
   if (it.addr) rows.push(['주소', esc(it.addr)]);
   if (it.kind === 'toilet' && it.open) rows.push(['개방', esc(it.open)]);
   if (it.tel) rows.push(['전화', esc(it.tel)]);
-  if (d != null) rows.push(['거리', (state.me ? '내 위치에서 ' : '기준 위치에서 ') + fmtDist(d) + ' (직선)']);
+  if (d != null) rows.push(['거리', (state.me ? '내 위치에서 ' : '기준 위치에서 ') + fmtDist(d) + (d <= 3000 ? ` · 걸어서 약 ${walkMin(d)}분` : '') + '<br><small style="color:var(--sub)">직선거리로 어림잡은 시간이에요</small>']);
   if (it.updated) rows.push(['수정일', esc(it.updated)]);
   const tel = telOf(it.tel);
   const hint = it.kind === 'toilet'
@@ -832,7 +865,7 @@ function bind() {
       if (it) { setSheet('mini'); panTo(it.lat, it.lng, 3); }
     }
   });
-  window.addEventListener('resize', placeFab);
+  window.addEventListener('resize', fitSheet);
   bindDrag();
 }
 
@@ -885,7 +918,7 @@ async function loadData(quiet) {
 }
 
 (async function start() {
-  loadLocal(); syncChips(); bind(); setSheet('half');
+  loadLocal(); syncChips(); bind(); fitSheet(); setSheet('half');
   try { await loadData(); } catch (e) { $('#list').innerHTML = '<div class="empty">수유실 자료를 불러오지 못했어요.<br>인터넷 연결을 확인하고 다시 열어 주세요.</div>'; }
   locate(false);
   // 6. 앱을 다시 열면 내 위치(1분 지났으면)와 자료(1시간 지났으면) 다시 확인
