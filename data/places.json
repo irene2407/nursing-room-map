@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "updated": "2026-11-19",
+  "sample": true,
+  "note": "견본 데이터입니다. 수유정보 알리미 API 키가 오면 전국 데이터로 자동 교체됩니다.",
+  "rooms": [
+    {"id": "sample-1", "kind": "room", "name": "견본 · 서울역 수유실", "type": "family", "father": true, "addr": "서울 중구 한강대로 405", "place": "견본 데이터 (실제 위치와 다를 수 있어요)", "tel": "", "lat": 37.5547, "lng": 126.9707, "region": "서울 중구", "src": "sample"},
+    {"id": "sample-2", "kind": "room", "name": "견본 · 강남역 수유실", "type": "family", "father": true, "addr": "서울 강남구 강남대로 396", "place": "견본 데이터 (실제 위치와 다를 수 있어요)", "tel": "", "lat": 37.4979, "lng": 127.0276, "region": "서울 강남구", "src": "sample"},
+    {"id": "sample-3", "kind": "room", "name": "견본 · 잠실 모유수유실", "type": "breast", "father": false, "addr": "서울 송파구 올림픽로 265", "place": "견본 데이터 (실제 위치와 다를 수 있어요)", "tel": "", "lat": 37.5133, "lng": 127.1001, "region": "서울 송파구", "src": "sample"},
+    {"id": "sample-4", "kind": "room", "name": "견본 · 수원역 수유실", "type": "family", "father": true, "addr": "경기 수원시 팔달구 덕영대로 924", "place": "견본 데이터 (실제 위치와 다를 수 있어요)", "tel": "", "lat": 37.2659, "lng": 127.0001, "region": "경기 수원시", "src": "sample"},
+    {"id": "sample-5", "kind": "room", "name": "견본 · 대전역 수유실", "type": "family", "father": true, "addr": "대전 동구 중앙로 215", "place": "견본 데이터 (실제 위치와 다를 수 있어요)", "tel": "", "lat": 36.3326, "lng": 127.4346, "region": "대전 동구", "src": "sample"},
+    {"id": "sample-6", "kind": "room", "name": "견본 · 부산역 수유실", "type": "breast", "father": false, "addr": "부산 동구 중앙대로 206", "place": "견본 데이터 (실제 위치와 다를 수 있어요)", "tel": "", "lat": 35.1152, "lng": 129.0422, "region": "부산 동구", "src": "sample"},
+    {"id": "sample-7", "kind": "subway", "name": "견본 · 시청역 수유실", "type": "family", "father": null, "addr": "서울 중구 세종대로 지하 101", "place": "견본 데이터 · 지하철역", "tel": "", "lat": 37.5657, "lng": 126.9769, "region": "서울 중구", "src": "sample"}
+  ],
+  "toilets": [
+    {"id": "sample-t1", "kind": "toilet", "name": "견본 · 공원 화장실", "addr": "서울 중구 세종대로 110", "place": "여자화장실 · 견본 데이터", "open": "상시", "lat": 37.5663, "lng": 126.9779, "region": "서울 중구", "src": "sample"}
+  ]
+}

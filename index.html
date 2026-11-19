@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FF8A70">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="수유실 지도">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>수유실 지도</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="favicon.ico">
+<style>
+  :root {
+    --bg: #FFF8F4;
+    --card: #FFFFFF;
+    --ink: #2E2622;
+    --sub: #6F625B;
+    --line: #F0E2DA;
+    --accent: #FF8A70;
+    --accent-dark: #E8664B;
+    --family: #FF7A5C;
+    --breast: #9467E0;
+    --subway: #2F80ED;
+    --toilet: #14A38B;
+    --fav: #F2A900;
+    --me: #2F80ED;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif;
+    overflow: hidden; overscroll-behavior: none; }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0; }
+  input { font: inherit; }
+
+  /* 위쪽 */
+  #top { position: fixed; left: 0; right: 0; top: 0; z-index: 20; padding: calc(var(--safe-t) + 10px) 12px 8px;
+    background: linear-gradient(var(--bg) 70%, rgba(255,248,244,0)); }
+  .titlebar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .titlebar img { width: 28px; height: 28px; border-radius: 8px; }
+  .titlebar h1 { font-size: 18px; margin: 0; letter-spacing: -0.3px; flex: 1; }
+  .icon-btn { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 17px; background: var(--card); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  #searchForm { display: flex; align-items: center; background: var(--card); border-radius: 14px; box-shadow: 0 2px 10px rgba(80,40,20,.10); padding: 0 6px 0 12px; height: 46px; }
+  #searchForm span { font-size: 16px; margin-right: 6px; }
+  #q { flex: 1; border: 0; outline: none; background: none; font-size: 16px; min-width: 0; color: var(--ink); }
+  #q::placeholder { color: #A99A92; }
+  #qClear { width: 32px; height: 32px; font-size: 16px; color: var(--sub); display: none; }
+  #searchForm.has #qClear { display: block; }
+  .chips { display: flex; gap: 6px; overflow-x: auto; padding: 8px 0 2px; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: none; height: 34px; padding: 0 12px; border-radius: 17px; background: var(--card); font-size: 14px; color: var(--sub);
+    box-shadow: 0 1px 4px rgba(0,0,0,.08); white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+  .chip.on { background: var(--ink); color: #fff; }
+  .chip .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+  #notice { margin-top: 6px; font-size: 12.5px; color: #8A4B2E; background: #FFE9DE; border-radius: 10px; padding: 7px 10px; display: none; line-height: 1.45; }
+
+  /* 지도 */
+  #map { position: fixed; inset: 0; z-index: 1; background: #EEE7E2; }
+  #mapMsg { position: fixed; inset: 0; z-index: 2; display: none; place-items: center; text-align: center; color: var(--sub); font-size: 14px; padding: 40px; line-height: 1.6; }
+  .fab { position: fixed; right: 12px; z-index: 15; width: 46px; height: 46px; border-radius: 50%; background: var(--card);
+    box-shadow: 0 2px 10px rgba(0,0,0,.15); display: grid; place-items: center; font-size: 20px; transition: bottom .25s; }
+  #meBtn.active { color: var(--me); }
+
+  /* 내 위치 점 */
+  .me-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--me); border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(47,128,237,.22), 0 1px 4px rgba(0,0,0,.3); }
+  .place-dot { padding: 4px 9px; border-radius: 12px; background: var(--ink); color: #fff; font-size: 12px; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+
+  /* 아래 목록 */
+  #sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 18; background: var(--card); border-radius: 20px 20px 0 0;
+    box-shadow: 0 -4px 20px rgba(60,30,10,.12); display: flex; flex-direction: column; height: 40vh; transition: height .25s ease;
+    padding-bottom: var(--safe-b); }
+  #sheet.mini { height: calc(92px + var(--safe-b)); }
+  #sheet.full { height: 82vh; }
+  #sheetHead { padding: 8px 16px 10px; flex: none; }
+  .handle { width: 40px; height: 5px; border-radius: 3px; background: #E3D6CF; margin: 0 auto 10px; }
+  #sheetTitle { font-size: 16px; font-weight: 700; display: flex; align-items: baseline; gap: 6px; }
+  #sheetTitle small { font-weight: 400; color: var(--sub); font-size: 13px; }
+  #sheetSub { font-size: 12.5px; color: var(--sub); margin-top: 3px; display: flex; gap: 8px; align-items: center; }
+  #backToMe { color: var(--me); font-size: 12.5px; text-decoration: underline; display: none; }
+  #list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 0 12px 12px; }
+  .item { display: flex; gap: 10px; align-items: flex-start; padding: 12px 6px; border-bottom: 1px solid var(--line); width: 100%; text-align: left; }
+  .item:last-child { border-bottom: 0; }
+  .item .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex: none; font-size: 17px; }
+  .item .body { flex: 1; min-width: 0; }
+  .item .nm { font-size: 15px; font-weight: 600; line-height: 1.35; }
+  .item .ds { font-size: 12.5px; color: var(--sub); margin-top: 2px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .item .dist { flex: none; font-size: 13px; font-weight: 600; color: var(--accent-dark); padding-top: 2px; }
+  .tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+  .tag { font-size: 11.5px; padding: 2px 7px; border-radius: 8px; background: #F6EEE9; color: var(--sub); }
+  .tag.family { background: #FFE8E1; color: #C2482B; }
+  .tag.breast { background: #F0E8FC; color: #6E43BE; }
+  .tag.subway { background: #E3EEFD; color: #1F63C4; }
+  .tag.toilet { background: #DDF4EF; color: #0D7C69; }
+  .tag.dad { background: #E9F3E3; color: #3F7A22; }
+  .empty { text-align: center; color: var(--sub); font-size: 14px; padding: 30px 10px; line-height: 1.6; }
+  .more { display: block; width: 100%; padding: 14px; color: var(--accent-dark); font-weight: 600; font-size: 14px; }
+
+  /* 팝업 */
+  #dim { position: fixed; inset: 0; background: rgba(30,20,15,.35); z-index: 40; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  #dim.show { opacity: 1; pointer-events: auto; }
+  .modal { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; background: var(--card); border-radius: 22px 22px 0 0;
+    padding: 10px 18px calc(18px + var(--safe-b)); max-height: 86vh; overflow-y: auto; transform: translateY(105%); transition: transform .25s ease; }
+  .modal.show { transform: translateY(0); }
+  .modal .x { position: absolute; right: 12px; top: 12px; width: 34px; height: 34px; border-radius: 50%; background: #F5EEEA; font-size: 16px; color: var(--sub); }
+  .modal h2 { font-size: 20px; margin: 8px 40px 6px 0; line-height: 1.35; letter-spacing: -0.3px; }
+  .modal .row { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; line-height: 1.5; }
+  .modal .row b { flex: none; width: 54px; color: var(--sub); font-weight: 500; }
+  .modal .row span { flex: 1; word-break: keep-all; overflow-wrap: anywhere; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+  .actions .btn { height: 48px; border-radius: 14px; font-weight: 600; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.soft { background: #F5EEEA; color: var(--ink); }
+  .btn.wide { grid-column: 1 / -1; }
+  .btn.disabled { opacity: .45; pointer-events: none; }
+  .hint { font-size: 12.5px; color: var(--sub); background: #FFF4EC; border-radius: 10px; padding: 9px 11px; margin-top: 12px; line-height: 1.5; }
+  .linkish { display: block; text-align: center; color: var(--sub); font-size: 13px; margin-top: 12px; text-decoration: underline; }
+  .info p { font-size: 14px; line-height: 1.6; margin: 8px 0; }
+  .info .legend { display: grid; gap: 8px; margin: 12px 0; font-size: 14px; }
+  .info .legend div { display: flex; align-items: center; gap: 8px; }
+  .info .ver { color: #B3A59E; font-size: 12px; text-align: center; margin-top: 16px; }
+
+  #toast { position: fixed; left: 50%; top: calc(var(--safe-t) + 150px); transform: translateX(-50%); z-index: 60; background: rgba(40,30,25,.92); color: #fff;
+    padding: 10px 16px; border-radius: 20px; font-size: 14px; max-width: 88vw; text-align: center; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="mapMsg"></div>
+
+<div id="top">
+  <div class="titlebar">
+    <img src="icon-192.png" alt="">
+    <h1>수유실 지도</h1>
+    <button class="icon-btn" id="infoBtn" aria-label="안내">ⓘ</button>
+  </div>
+  <form id="searchForm" autocomplete="off">
+    <span>🔍</span>
+    <input id="q" type="search" enterkeyhint="search" placeholder="수유실 이름이나 지역 (예: 해운대, 스타필드)">
+    <button type="button" id="qClear" aria-label="지우기">✕</button>
+  </form>
+  <div class="chips" id="chips">
+    <button class="chip on" data-type="all">전체</button>
+    <button class="chip" data-type="family"><i class="dot" style="background:var(--family)"></i>가족수유실</button>
+    <button class="chip" data-type="breast"><i class="dot" style="background:var(--breast)"></i>모유수유·착유실</button>
+    <button class="chip" data-toggle="father">👨 아빠 이용 가능</button>
+    <button class="chip" data-toggle="toilets">🚼 기저귀 화장실</button>
+    <button class="chip" data-toggle="fav">⭐ 즐겨찾기</button>
+  </div>
+  <div id="notice"></div>
+</div>
+
+<button class="fab" id="meBtn" aria-label="내 위치">◎</button>
+
+<div id="sheet">
+  <div id="sheetHead">
+    <div class="handle"></div>
+    <div id="sheetTitle">가까운 수유실 <small id="count"></small></div>
+    <div id="sheetSub"><span id="originLabel">위치를 찾는 중…</span><button id="backToMe">내 위치로</button></div>
+  </div>
+  <div id="list"></div>
+</div>
+
+<div id="dim"></div>
+<div class="modal" id="modal" role="dialog" aria-modal="true"></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const APP_VERSION = '2026.11.19';
+const KAKAO_JS_KEY = 'd34d91c8d1966bf88d70da960b850c56';
+const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청
+const LS_FAV = 'nursing-map-v1-fav';
+const LS_FILTER = 'nursing-map-v1-filter';
+const PAGE = 40;
+
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const state = {
+  data: null,
+  items: [],                 // 수유실 + 지하철 + 화장실
+  type: 'all',               // all | family | breast
+  father: false,
+  toilets: false,
+  fav: false,
+  query: '',
+  origin: null,              // {lat, lng, label}
+  me: null,                  // 내 위치
+  shown: PAGE,
+  favs: new Set(),
+};
+
+/* ---------- 저장 ---------- */
+function loadLocal() {
+  try { state.favs = new Set(JSON.parse(localStorage.getItem(LS_FAV) || '[]')); } catch (e) { state.favs = new Set(); }
+  try {
+    const f = JSON.parse(localStorage.getItem(LS_FILTER) || '{}');
+    if (['all', 'family', 'breast'].includes(f.type)) state.type = f.type;
+    state.father = !!f.father; state.toilets = !!f.toilets;
+  } catch (e) {}
+}
+function saveFavs() { try { localStorage.setItem(LS_FAV, JSON.stringify([...state.favs])); } catch (e) {} }
+function saveFilter() { try { localStorage.setItem(LS_FILTER, JSON.stringify({ type: state.type, father: state.father, toilets: state.toilets })); } catch (e) {} }
+
+/* ---------- 거리 ---------- */
+function dist(a, b) {
+  const R = 6371000, toR = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * toR, dLng = (b.lng - a.lng) * toR;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * toR) * Math.cos(b.lat * toR) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function fmtDist(m) {
+  if (m == null || !isFinite(m)) return '';
+  if (m < 1000) return Math.round(m / 10) * 10 + 'm';
+  if (m < 10000) return (m / 1000).toFixed(1) + 'km';
+  return Math.round(m / 1000) + 'km';
+}
+
+/* ---------- 표시용 ---------- */
+const TYPE_NAME = { family: '가족수유실', breast: '모유수유·착유실' };
+function colorOf(it) {
+  if (state.favs.has(it.id)) return getVar('--fav');
+  if (it.kind === 'toilet') return getVar('--toilet');
+  if (it.kind === 'subway') return getVar('--subway');
+  return it.type === 'breast' ? getVar('--breast') : getVar('--family');
+}
+function emojiOf(it) { return it.kind === 'toilet' ? '🚼' : it.kind === 'subway' ? '🚇' : '🍼'; }
+function bgOf(it) {
+  if (it.kind === 'toilet') return '#DDF4EF';
+  if (it.kind === 'subway') return '#E3EEFD';
+  return it.type === 'breast' ? '#F0E8FC' : '#FFE8E1';
+}
+const cssVars = getComputedStyle(document.documentElement);
+function getVar(n) { return cssVars.getPropertyValue(n).trim(); }
+
+function tagsHtml(it) {
+  const t = [];
+  if (it.kind === 'toilet') t.push('<span class="tag toilet">🚼 기저귀 교환대 화장실</span>');
+  else {
+    if (it.kind === 'subway') t.push('<span class="tag subway">🚇 지하철역</span>');
+    if (it.type) t.push(`<span class="tag ${esc(it.type)}">${esc(TYPE_NAME[it.type] || it.type)}</span>`);
+    if (it.father === true) t.push('<span class="tag dad">👨 아빠 가능</span>');
+  }
+  if (state.favs.has(it.id)) t.push('<span class="tag">⭐ 즐겨찾기</span>');
+  return t.join('');
+}
+
+/* ---------- 걸러내기 ---------- */
+function matchesQuery(it, q) {
+  if (!q) return true;
+  const hay = (it.name + ' ' + (it.addr || '') + ' ' + (it.region || '') + ' ' + (it.place || '')).replace(/\s+/g, '').toLowerCase();
+  return q.replace(/\s+/g, '').toLowerCase().split(/[,]/).every((w) => !w || hay.includes(w));
+}
+function visibleItems() {
+  return state.items.filter((it) => {
+    if (it.kind === 'toilet') {
+      if (!state.toilets) return false;
+      // 수유실 종류·아빠 필터는 화장실에는 적용하지 않음
+    } else {
+      if (state.type !== 'all' && it.type !== state.type) return false;
+      if (state.father && it.father !== true) return false;
+    }
+    if (state.fav && !state.favs.has(it.id)) return false;
+    return true;
+  });
+}
+
+/* ---------- 목록 ---------- */
+function renderList() {
+  const o = state.origin || state.me || DEFAULT_CENTER;
+  let arr = visibleItems();
+  if (state.query) arr = arr.filter((it) => matchesQuery(it, state.query));
+  arr = arr.map((it) => ({ it, d: dist(o, it) })).sort((a, b) => a.d - b.d);
+
+  const title = $('#sheetTitle');
+  const label = state.query ? `‘${esc(state.query)}’ 검색 결과` : state.fav ? '즐겨찾기' : state.toilets && state.type === 'all' && !state.father ? '가까운 수유실·화장실' : '가까운 수유실';
+  title.innerHTML = `${label} <small id="count">${arr.length.toLocaleString()}곳</small>`;
+
+  const list = $('#list');
+  if (!arr.length) {
+    let msg = '조건에 맞는 곳이 없어요.';
+    if (state.fav) msg = '아직 즐겨찾기한 곳이 없어요.<br>수유실을 누르고 ⭐를 눌러 추가해 보세요.';
+    else if (state.query) msg = `‘${esc(state.query)}’ 이름이나 주소의 수유실이 없어요.<br>다른 말로 찾아보세요.`;
+    list.innerHTML = `<div class="empty">${msg}</div>`;
+    return;
+  }
+  const html = arr.slice(0, state.shown).map(({ it, d }) => `
+    <button class="item" data-id="${esc(it.id)}">
+      <div class="ic" style="background:${bgOf(it)}">${emojiOf(it)}</div>
+      <div class="body">
+        <div class="nm">${esc(it.name)}</div>
+        <div class="ds">${esc(it.place || it.addr || '')}</div>
+        <div class="tags">${tagsHtml(it)}</div>
+      </div>
+      <div class="dist">${fmtDist(d)}</div>
+    </button>`).join('');
+  list.innerHTML = html + (arr.length > state.shown ? `<button class="more" id="moreBtn">더 보기 (${(arr.length - state.shown).toLocaleString()}곳 더)</button>` : '');
+}
+
+function setOriginLabel() {
+  const o = state.origin;
+  let txt = '위치를 찾는 중…';
+  if (o && o.label) txt = o.label;
+  else if (state.me) txt = '📍 내 위치 기준 · 가까운 순';
+  $('#originLabel').textContent = txt;
+  $('#backToMe').style.display = state.me && o && o.kind !== 'me' ? 'inline' : 'none';
+}
+
+/* ---------- 지도 ---------- */
+let map = null, clusterer = null, meOverlay = null, placeOverlay = null;
+const markers = new Map();   // id -> marker
+const imgCache = new Map();
+let suppressIdle = 0;
+
+function markerImage(color, small) {
+  const key = color + (small ? 's' : '');
+  if (imgCache.has(key)) return imgCache.get(key);
+  const w = small ? 22 : 28, h = small ? 29 : 37;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 28 37"><path d="M14 36s12-12.6 12-21.5C26 7 20.6 2 14 2S2 7 2 14.5C2 23.4 14 36 14 36z" fill="${color}" stroke="#fff" stroke-width="2.4"/><circle cx="14" cy="14.5" r="4.6" fill="#fff"/></svg>`;
+  const img = new kakao.maps.MarkerImage('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg), new kakao.maps.Size(w, h), { offset: new kakao.maps.Point(w / 2, h - 1) });
+  imgCache.set(key, img);
+  return img;
+}
+function markerFor(it) {
+  let m = markers.get(it.id);
+  if (!m) {
+    m = new kakao.maps.Marker({ position: new kakao.maps.LatLng(it.lat, it.lng), title: it.name, image: markerImage(colorOf(it), it.kind === 'toilet') });
+    kakao.maps.event.addListener(m, 'click', () => openDetail(it.id));
+    markers.set(it.id, m);
+  }
+  return m;
+}
+function refreshMarkerImage(it) {
+  const m = markers.get(it.id);
+  if (m) m.setImage(markerImage(colorOf(it), it.kind === 'toilet'));
+}
+function renderMarkers() {
+  if (!map) return;
+  const vis = visibleItems();
+  clusterer.clear();
+  clusterer.addMarkers(vis.map(markerFor));
+}
+function panTo(lat, lng, level) {
+  if (!map) return;
+  suppressIdle++;
+  if (level) map.setLevel(level);
+  map.panTo(new kakao.maps.LatLng(lat, lng));
+  setTimeout(() => { suppressIdle = Math.max(0, suppressIdle - 1); }, 900);
+}
+function showMe() {
+  if (!map || !state.me) return;
+  const pos = new kakao.maps.LatLng(state.me.lat, state.me.lng);
+  if (!meOverlay) meOverlay = new kakao.maps.CustomOverlay({ position: pos, content: '<div class="me-dot"></div>', zIndex: 5 });
+  meOverlay.setPosition(pos); meOverlay.setMap(map);
+}
+function showPlace(lat, lng, name) {
+  if (!map) return;
+  if (placeOverlay) placeOverlay.setMap(null);
+  placeOverlay = new kakao.maps.CustomOverlay({ position: new kakao.maps.LatLng(lat, lng), content: `<div class="place-dot">📍 ${esc(name)}</div>`, yAnchor: 1.6, zIndex: 4 });
+  placeOverlay.setMap(map);
+}
+
+function initMap() {
+  const c = state.me || DEFAULT_CENTER;
+  map = new kakao.maps.Map($('#map'), { center: new kakao.maps.LatLng(c.lat, c.lng), level: 5 });
+  clusterer = new kakao.maps.MarkerClusterer({
+    map, averageCenter: true, minLevel: 7, gridSize: 50, disableClickZoom: false,
+    styles: [{ width: '38px', height: '38px', background: 'rgba(255,122,92,.88)', borderRadius: '19px', color: '#fff', textAlign: 'center', fontWeight: '700', lineHeight: '38px', fontSize: '13px', border: '2px solid #fff' }]
+  });
+  renderMarkers();
+  showMe();
+  kakao.maps.event.addListener(map, 'dragstart', () => setSheet('mini'));
+  kakao.maps.event.addListener(map, 'idle', () => {
+    if (suppressIdle) return;
+    const ctr = map.getCenter();
+    const o = { lat: ctr.getLat(), lng: ctr.getLng() };
+    if (state.origin && dist(state.origin, o) < 30) return;
+    state.origin = { ...o, label: '🗺️ 지도 가운데 기준 · 가까운 순', kind: 'map' };
+    state.shown = PAGE;
+    setOriginLabel(); renderList();
+  });
+}
+
+function loadKakao() {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false&libraries=services,clusterer`;
+    s.onload = () => { try { kakao.maps.load(resolve); } catch (e) { reject(e); } };
+    s.onerror = reject;
+    document.head.appendChild(s);
+    setTimeout(() => reject(new Error('timeout')), 15000);
+  });
+}
+
+/* ---------- 내 위치 ---------- */
+function locate(fromButton) {
+  if (!navigator.geolocation) { if (fromButton) toast('이 폰에서는 위치를 쓸 수 없어요'); fallbackOrigin(); return; }
+  if (fromButton) toast('내 위치를 찾는 중…');
+  navigator.geolocation.getCurrentPosition((p) => {
+    state.me = { lat: p.coords.latitude, lng: p.coords.longitude };
+    state.origin = { ...state.me, kind: 'me', label: '📍 내 위치 기준 · 가까운 순' };
+    state.shown = PAGE;
+    $('#meBtn').classList.add('active');
+    showMe();
+    panTo(state.me.lat, state.me.lng, fromButton ? 4 : null);
+    if (placeOverlay) { placeOverlay.setMap(null); placeOverlay = null; }
+    setOriginLabel(); renderList();
+  }, (err) => {
+    if (fromButton || !state.origin) {
+      toast(err.code === 1 ? '위치 권한이 꺼져 있어요. 설정에서 허용해 주세요' : '위치를 찾지 못했어요');
+    }
+    fallbackOrigin();
+  }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+}
+function fallbackOrigin() {
+  if (state.origin) return;
+  state.origin = { ...DEFAULT_CENTER, kind: 'default', label: '서울시청 기준 · 위치 권한을 켜면 내 주변을 보여줘요' };
+  setOriginLabel(); renderList();
+}
+
+/* ---------- 검색 ---------- */
+function doSearch(q) {
+  q = q.trim();
+  state.query = q; state.shown = PAGE;
+  $('#searchForm').classList.toggle('has', !!q);
+  if (!q) { renderList(); return; }
+  const local = visibleItems().filter((it) => matchesQuery(it, q));
+  // 지역·장소 이름이면 그곳으로 이동
+  if (window.kakao && kakao.maps && kakao.maps.services) {
+    const ps = new kakao.maps.services.Places();
+    ps.keywordSearch(q, (res, status) => {
+      if (status === kakao.maps.services.Status.OK && res.length) {
+        const r = res[0];
+        const lat = +r.y, lng = +r.x;
+        state.origin = { lat, lng, kind: 'place', label: `📍 ‘${r.place_name}’ 근처 · 가까운 순` };
+        // 이름이 맞는 수유실이 없으면 그 근처 수유실을 보여줌
+        if (!local.length) state.query = '';
+        panTo(lat, lng, 5);
+        showPlace(lat, lng, r.place_name);
+        setOriginLabel(); renderList(); setSheet('half');
+      } else {
+        renderList(); setSheet('half');
+      }
+    }, { size: 1 });
+  } else {
+    renderList(); setSheet('half');
+  }
+  $('#q').blur();
+}
+
+/* ---------- 아래 목록 높이 ---------- */
+function setSheet(mode) {
+  const s = $('#sheet');
+  s.classList.remove('mini', 'full');
+  if (mode === 'mini' || mode === 'full') s.classList.add(mode);
+  requestAnimationFrame(placeFab);
+}
+function placeFab() {
+  const h = $('#sheet').getBoundingClientRect().height;
+  $('#meBtn').style.bottom = (h + 12) + 'px';
+}
+
+/* ---------- 팝업 ---------- */
+let modalOpen = false, closingByBack = false;
+function openModal(html) {
+  $('#modal').innerHTML = '<button class="x" data-close aria-label="닫기">✕</button>' + html;
+  $('#modal').scrollTop = 0;
+  $('#modal').classList.add('show'); $('#dim').classList.add('show');
+  if (!modalOpen) { modalOpen = true; try { history.pushState({ modal: 1 }, ''); } catch (e) {} }
+}
+function closeModal(fromPop) {
+  if (!modalOpen) return;
+  modalOpen = false;
+  $('#modal').classList.remove('show'); $('#dim').classList.remove('show');
+  if (!fromPop) { closingByBack = true; try { history.back(); } catch (e) { closingByBack = false; } }
+}
+window.addEventListener('popstate', () => {
+  if (closingByBack) { closingByBack = false; return; }
+  if (modalOpen) closeModal(true);
+});
+
+function kakaoLink(it) {
+  const nm = String(it.name).replace(/,/g, ' ');
+  return `https://map.kakao.com/link/to/${encodeURIComponent(nm)},${it.lat},${it.lng}`;
+}
+function openNaver(it) {
+  const app = `nmap://route/walk?dlat=${it.lat}&dlng=${it.lng}&dname=${encodeURIComponent(it.name)}&appname=${encodeURIComponent(location.hostname || 'nursing-map')}`;
+  const web = `https://map.naver.com/p/search/${encodeURIComponent(it.addr || it.name)}`;
+  const t = setTimeout(() => { if (!document.hidden) location.href = web; }, 1400);
+  document.addEventListener('visibilitychange', function h() { if (document.hidden) { clearTimeout(t); document.removeEventListener('visibilitychange', h); } });
+  location.href = app;
+}
+
+function openDetail(id) {
+  const it = state.items.find((x) => x.id === id);
+  if (!it) return;
+  const o = state.me || state.origin;
+  const d = o ? dist(o, it) : null;
+  const fav = state.favs.has(it.id);
+  const rows = [];
+  if (it.place) rows.push(['위치', esc(it.place)]);
+  if (it.addr) rows.push(['주소', esc(it.addr)]);
+  if (it.kind === 'toilet' && it.open) rows.push(['개방', esc(it.open)]);
+  if (it.tel) rows.push(['전화', esc(it.tel)]);
+  if (d != null) rows.push(['거리', (state.me ? '내 위치에서 ' : '기준 위치에서 ') + fmtDist(d) + ' (직선)']);
+  if (it.updated) rows.push(['수정일', esc(it.updated)]);
+  const tel = String(it.tel || '').replace(/[^0-9+]/g, '');
+  const hint = it.kind === 'toilet'
+    ? '기저귀 교환대가 있는 화장실이에요. 수유실은 아니에요.'
+    : '운영시간 정보는 없어요. 기관 사정으로 바뀔 수 있으니 방문 전에 전화로 확인하면 좋아요.';
+  const fix = it.src === 'sooyusil' && it.roomNo
+    ? `<a class="linkish" href="https://sooyusil.com/home/42.htm?roomNo=${encodeURIComponent(it.roomNo)}" target="_blank" rel="noopener">수유정보 알리미에서 사진·물품 보기 / 정보 수정 요청</a>` : '';
+  openModal(`
+    <div class="tags" style="margin-top:4px">${tagsHtml(it)}</div>
+    <h2>${esc(it.name)}</h2>
+    ${rows.map(([k, v]) => `<div class="row"><b>${k}</b><span>${v}</span></div>`).join('')}
+    <div class="actions">
+      <a class="btn primary" href="${kakaoLink(it)}" target="_blank" rel="noopener">🧭 카카오맵 길찾기</a>
+      <button class="btn soft" data-naver="${esc(it.id)}">🟢 네이버지도</button>
+      <a class="btn soft ${tel ? '' : 'disabled'}" href="${tel ? 'tel:' + tel : '#'}">📞 ${tel ? '전화 걸기' : '전화번호 없음'}</a>
+      <button class="btn soft" data-fav="${esc(it.id)}">${fav ? '⭐ 즐겨찾기 빼기' : '☆ 즐겨찾기'}</button>
+      <button class="btn soft wide" data-show="${esc(it.id)}">🗺️ 지도에서 보기</button>
+    </div>
+    <div class="hint">${hint}</div>
+    ${fix}`);
+}
+
+function openInfo() {
+  const d = state.data || {};
+  const cnt = (k) => state.items.filter((x) => x.kind === k).length.toLocaleString();
+  openModal(`
+    <h2>수유실 지도 안내</h2>
+    <div class="info">
+      <div class="legend">
+        <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--family);display:inline-block"></i>가족수유실 (아빠도 들어갈 수 있는 곳이 많아요)</div>
+        <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--breast);display:inline-block"></i>모유수유·착유실</div>
+        <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--subway);display:inline-block"></i>지하철역 수유실</div>
+        <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--toilet);display:inline-block"></i>기저귀 교환대 화장실</div>
+        <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--fav);display:inline-block"></i>즐겨찾기</div>
+      </div>
+      <p>수유실 ${cnt('room')}곳 · 지하철역 ${cnt('subway')}곳 · 기저귀 화장실 ${cnt('toilet')}곳</p>
+      <p>자료 기준일: ${esc(d.updated || '-')}${d.sample ? ' (견본 데이터)' : ''}</p>
+      <p style="color:var(--sub);font-size:13px">자료: 수유정보 알리미(보건복지부·인구보건복지협회), 서울교통공사, 지자체 공중화장실 공공데이터. 실제와 다를 수 있으니 방문 전에 확인해 주세요. 즐겨찾기는 이 폰에만 저장돼요.</p>
+      <div class="ver">버전 ${APP_VERSION}</div>
+    </div>`);
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), Math.min(6000, 1800 + msg.length * 60));
+}
+
+/* ---------- 필터 버튼 ---------- */
+function syncChips() {
+  document.querySelectorAll('#chips .chip').forEach((b) => {
+    if (b.dataset.type) b.classList.toggle('on', b.dataset.type === state.type);
+    if (b.dataset.toggle) b.classList.toggle('on', !!state[b.dataset.toggle]);
+  });
+}
+
+/* ---------- 이벤트 ---------- */
+function bind() {
+  $('#chips').addEventListener('click', (e) => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    if (b.dataset.type) state.type = b.dataset.type;
+    if (b.dataset.toggle) {
+      state[b.dataset.toggle] = !state[b.dataset.toggle];
+      if (b.dataset.toggle === 'toilets' && state.toilets && !state.items.some((x) => x.kind === 'toilet')) toast('아직 기저귀 화장실 자료가 없어요');
+    }
+    state.shown = PAGE;
+    syncChips(); saveFilter(); renderList(); renderMarkers();
+  });
+  $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); doSearch($('#q').value); });
+  $('#q').addEventListener('input', () => {
+    $('#searchForm').classList.toggle('has', !!$('#q').value);
+    if (!$('#q').value && state.query) { state.query = ''; renderList(); }
+  });
+  $('#q').addEventListener('focus', () => setSheet('half'));
+  $('#qClear').addEventListener('click', () => {
+    $('#q').value = ''; $('#searchForm').classList.remove('has');
+    state.query = ''; if (placeOverlay) { placeOverlay.setMap(null); placeOverlay = null; }
+    renderList();
+  });
+  $('#sheetHead').addEventListener('click', (e) => {
+    if (e.target.closest('#backToMe')) return;
+    const s = $('#sheet');
+    setSheet(s.classList.contains('full') ? 'half' : s.classList.contains('mini') ? 'half' : 'full');
+  });
+  $('#backToMe').addEventListener('click', () => {
+    if (!state.me) return;
+    state.origin = { ...state.me, kind: 'me', label: '📍 내 위치 기준 · 가까운 순' };
+    panTo(state.me.lat, state.me.lng);
+    setOriginLabel(); renderList();
+  });
+  $('#list').addEventListener('click', (e) => {
+    if (e.target.id === 'moreBtn') { state.shown += PAGE; renderList(); return; }
+    const b = e.target.closest('.item'); if (b) openDetail(b.dataset.id);
+  });
+  $('#meBtn').addEventListener('click', () => locate(true));
+  $('#infoBtn').addEventListener('click', openInfo);
+  $('#dim').addEventListener('click', () => closeModal());
+  $('#modal').addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) { closeModal(); return; }
+    const f = e.target.closest('[data-fav]');
+    if (f) {
+      const id = f.dataset.fav;
+      if (state.favs.has(id)) { state.favs.delete(id); toast('즐겨찾기에서 뺐어요'); } else { state.favs.add(id); toast('⭐ 즐겨찾기에 넣었어요'); }
+      saveFavs();
+      const it = state.items.find((x) => x.id === id);
+      if (it) refreshMarkerImage(it);
+      renderList(); if (state.fav) renderMarkers();
+      openDetail(id);
+      return;
+    }
+    const n = e.target.closest('[data-naver]');
+    if (n) { const it = state.items.find((x) => x.id === n.dataset.naver); if (it) openNaver(it); return; }
+    const s = e.target.closest('[data-show]');
+    if (s) {
+      const it = state.items.find((x) => x.id === s.dataset.show);
+      closeModal();
+      if (it) { setSheet('mini'); panTo(it.lat, it.lng, 3); }
+    }
+  });
+  window.addEventListener('resize', placeFab);
+}
+
+/* ---------- 시작 ---------- */
+async function loadData() {
+  const res = await fetch('data/places.json?v=' + Date.now(), { cache: 'no-store' });
+  if (!res.ok) throw new Error('data ' + res.status);
+  const d = await res.json();
+  const ok = (x) => x && isFinite(+x.lat) && isFinite(+x.lng) && +x.lat > 32 && +x.lat < 39.5 && +x.lng > 124 && +x.lng < 132.5;
+  const items = [];
+  for (const x of (d.rooms || [])) if (ok(x)) items.push({ ...x, lat: +x.lat, lng: +x.lng, kind: x.kind || 'room' });
+  for (const x of (d.toilets || [])) if (ok(x)) items.push({ ...x, lat: +x.lat, lng: +x.lng, kind: 'toilet' });
+  state.data = d; state.items = items;
+  if (d.sample) {
+    const n = $('#notice'); n.style.display = 'block';
+    n.textContent = '지금은 견본 데이터 몇 곳만 보여요. 수유정보 알리미 키가 오면 전국 수유실로 바뀌어요.';
+  }
+}
+
+(async function start() {
+  loadLocal(); syncChips(); bind(); setSheet('half');
+  try { await loadData(); } catch (e) { $('#list').innerHTML = '<div class="empty">수유실 자료를 불러오지 못했어요.<br>인터넷 연결을 확인하고 다시 열어 주세요.</div>'; }
+  renderList();
+  locate(false);
+  try {
+    await loadKakao();
+    initMap();
+  } catch (e) {
+    const m = $('#mapMsg'); m.style.display = 'grid';
+    m.innerHTML = '지도를 불러오지 못했어요.<br>목록은 그대로 쓸 수 있어요.';
+  }
+})();
+</script>
+</body>
+</html>
