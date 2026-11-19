@@ -49,13 +49,7 @@
   #q::placeholder { color: #A99A92; }
   #qClear { width: 32px; height: 32px; font-size: 16px; color: var(--sub); display: none; }
   #searchForm.has #qClear { display: block; }
-  .chips { display: flex; gap: 6px; overflow-x: auto; padding: 8px 0 2px; scrollbar-width: none; }
-  .chips::-webkit-scrollbar { display: none; }
-  .chip { flex: none; height: 34px; padding: 0 12px; border-radius: 17px; background: var(--card); font-size: 14px; color: var(--sub);
-    box-shadow: 0 1px 4px rgba(0,0,0,.08); white-space: nowrap; display: flex; align-items: center; gap: 4px; }
-  /* 켜고 끄는 조건 버튼: 켜지면 코랄 테두리 + ✓ */
-  .chip.on { background: #FFE8E1; color: #B8432A; box-shadow: inset 0 0 0 1.5px var(--accent), 0 1px 4px rgba(0,0,0,.06); font-weight: 600; }
-  .chip.on::before { content: "✓"; font-weight: 700; margin-right: 2px; }
+
   /* 하나만 고르는 종류 버튼 */
   .seg { display: flex; margin-top: 8px; background: var(--card); border-radius: 12px; padding: 3px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
   .seg button { flex: 1; height: 42px; border-radius: 9px; font-size: 14px; color: var(--sub); display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.2; white-space: nowrap; }
@@ -82,13 +76,21 @@
   #sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 18; background: var(--card); border-radius: 20px 20px 0 0;
     box-shadow: 0 -4px 20px rgba(60,30,10,.12); display: flex; flex-direction: column; height: 40vh; transition: height .25s ease;
     padding-bottom: var(--safe-b); }
-  #sheet.mini { height: calc(92px + var(--safe-b)); }
-  #sheet.full { height: 82vh; }
+  #sheet.mini { height: calc(112px + var(--safe-b)); }
+  #sheet.full { height: 86vh; z-index: 25; }
   #sheetHead { padding: 8px 16px 10px; flex: none; }
   .handle { width: 40px; height: 5px; border-radius: 3px; background: #E3D6CF; margin: 0 auto 10px; }
-  #sheetTitle { font-size: 16px; font-weight: 700; display: flex; align-items: baseline; gap: 6px; }
-  #sheetTitle small { font-weight: 400; color: var(--sub); font-size: 13px; }
-  #sheetSub { font-size: 12.5px; color: var(--sub); margin-top: 3px; display: flex; gap: 8px; align-items: center; }
+  .tabs { display: flex; gap: 4px; background: #F6EEE9; border-radius: 12px; padding: 3px; }
+  .tabs button { flex: 1; height: 36px; border-radius: 9px; font-size: 14px; color: var(--sub); white-space: nowrap; }
+  .tabs button.on { background: var(--card); color: var(--ink); font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,.10); }
+  #favCount { margin-left: 3px; font-size: 12px; color: var(--accent-dark); font-weight: 700; }
+  #count { font-weight: 600; color: var(--ink); }
+  .seg.dim { opacity: .45; }
+  .suggest { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; margin: 4px 0 6px; padding: 11px 12px; border-radius: 14px; background: #DDF4EF; color: #0D5F51; font-size: 13.5px; line-height: 1.45; }
+  .suggest b { color: #0B4F43; }
+  .suggest .go { margin-left: auto; flex: none; font-weight: 700; }
+  .note { margin: 4px 0 6px; padding: 10px 12px; border-radius: 12px; background: #FFF4EC; color: #8A4B2E; font-size: 13px; line-height: 1.5; }
+  #sheetSub { font-size: 12.5px; color: var(--sub); margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   #backToMe { color: var(--me); font-size: 12.5px; text-decoration: underline; display: none; }
   #list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 0 12px 12px; }
   .item { display: flex; gap: 10px; align-items: flex-start; padding: 12px 6px; border-bottom: 1px solid var(--line); width: 100%; text-align: left; }
@@ -158,10 +160,6 @@
     <button data-type="family" role="radio"><span><i class="dot" style="background:var(--family)"></i>가족수유실</span><small>아빠 OK</small></button>
     <button data-type="breast" role="radio"><span><i class="dot" style="background:var(--breast)"></i>모유·착유실</span><small>엄마 전용</small></button>
   </div>
-  <div class="chips" id="chips">
-    <button class="chip" data-toggle="toilets">🚼 기저귀 화장실</button>
-    <button class="chip" data-toggle="fav">⭐ 즐겨찾기</button>
-  </div>
   <div id="notice"></div>
 </div>
 
@@ -170,8 +168,12 @@
 <div id="sheet">
   <div id="sheetHead">
     <div class="handle"></div>
-    <div id="sheetTitle">가까운 수유실 <small id="count"></small></div>
-    <div id="sheetSub"><span id="originLabel">위치를 찾는 중…</span><button id="backToMe">내 위치로</button></div>
+    <div class="tabs" id="tabs" role="tablist">
+      <button class="on" data-tab="rooms" role="tab">📍 수유실</button>
+      <button data-tab="toilets" role="tab">🚼 기저귀 화장실</button>
+      <button data-tab="fav" role="tab">⭐ 즐겨찾기<span id="favCount"></span></button>
+    </div>
+    <div id="sheetSub"><span id="originLabel">위치를 찾는 중…</span><b id="count"></b><button id="backToMe">내 위치로</button></div>
   </div>
   <div id="list"></div>
 </div>
@@ -182,7 +184,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '2026.11.19c';
+const APP_VERSION = '2026.11.19d';
 const KAKAO_JS_KEY = 'd34d91c8d1966bf88d70da960b850c56';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청
 const LS_FAV = 'nursing-map-v1-fav';
@@ -196,8 +198,7 @@ const state = {
   data: null,
   items: [],                 // 수유실 + 지하철 + 화장실
   type: 'all',               // all | family | breast
-  toilets: false,
-  fav: false,
+  tab: 'rooms',               // rooms | toilets | fav
   query: '',
   origin: null,              // {lat, lng, label}
   me: null,                  // 내 위치
@@ -211,11 +212,10 @@ function loadLocal() {
   try {
     const f = JSON.parse(localStorage.getItem(LS_FILTER) || '{}');
     if (['all', 'family', 'breast'].includes(f.type)) state.type = f.type;
-    state.toilets = !!f.toilets;
   } catch (e) {}
 }
 function saveFavs() { try { localStorage.setItem(LS_FAV, JSON.stringify([...state.favs])); } catch (e) {} }
-function saveFilter() { try { localStorage.setItem(LS_FILTER, JSON.stringify({ type: state.type, toilets: state.toilets })); } catch (e) {} }
+function saveFilter() { try { localStorage.setItem(LS_FILTER, JSON.stringify({ type: state.type })); } catch (e) {} }
 
 /* ---------- 거리 ---------- */
 function dist(a, b) {
@@ -267,18 +267,17 @@ function matchesQuery(it, q) {
   const hay = (it.name + ' ' + (it.addr || '') + ' ' + (it.region || '') + ' ' + (it.place || '')).replace(/\s+/g, '').toLowerCase();
   return q.replace(/\s+/g, '').toLowerCase().split(/[,]/).every((w) => !w || hay.includes(w));
 }
-function visibleItems() {
+function visibleItems(tab) {
+  tab = tab || state.tab;
   return state.items.filter((it) => {
-    if (it.kind === 'toilet') {
-      if (!state.toilets) return false;
-      // 수유실 종류·아빠 필터는 화장실에는 적용하지 않음
-    } else {
-      if (state.type !== 'all' && it.type !== state.type) return false;
-    }
-    if (state.fav && !state.favs.has(it.id)) return false;
-    return true;
+    if (tab === 'fav') return state.favs.has(it.id);           // 즐겨찾기는 종류 상관없이 전부
+    if (tab === 'toilets') return it.kind === 'toilet';
+    if (it.kind === 'toilet') return false;
+    return state.type === 'all' || it.type === state.type;
   });
 }
+const NEAR_ROOM = 1000;     // 이보다 멀면 기저귀 화장실을 먼저 알려 줌
+const NEAR_TOILET = 1000;
 
 /* ---------- 목록 ---------- */
 function renderList() {
@@ -287,16 +286,36 @@ function renderList() {
   if (state.query) arr = arr.filter((it) => matchesQuery(it, state.query));
   arr = arr.map((it) => ({ it, d: dist(o, it) })).sort((a, b) => a.d - b.d);
 
-  const title = $('#sheetTitle');
-  const label = state.query ? `‘${esc(state.query)}’ 검색 결과` : state.fav ? '즐겨찾기' : state.toilets && state.type === 'all' ? '가까운 수유실·화장실' : '가까운 수유실';
-  title.innerHTML = `${label} <small id="count">${arr.length.toLocaleString()}곳</small>`;
+  $('#count').textContent = (state.query ? `‘${state.query}’ ` : '') + arr.length.toLocaleString() + '곳';
+  $('#favCount').textContent = state.favs.size ? ' ' + state.favs.size : '';
+
+  // 위쪽 안내 (B: 수유실이 멀면 기저귀 화장실 먼저 알려 주기)
+  let top = '';
+  if (state.tab === 'rooms' && !state.query) {
+    const nearest = arr.length ? arr[0].d : Infinity;
+    if (nearest > NEAR_ROOM) {
+      const near = state.items.filter((it) => it.kind === 'toilet' && dist(o, it) <= NEAR_TOILET);
+      if (near.length) {
+        const nd = Math.min(...near.map((it) => dist(o, it)));
+        top = `<button class="suggest" id="goToilets">🚼<span>가까운 수유실이 멀어요${isFinite(nearest) ? ` (${fmtDist(nearest)})` : ''}.<br><b>${fmtDist(nd)} 거리에 기저귀 교환대 화장실</b>이 있어요${near.length > 1 ? ` (${near.length}곳)` : ''}</span><span class="go">보기 ›</span></button>`;
+      }
+    }
+  }
+  if (state.tab === 'toilets') {
+    const hasAny = state.items.some((it) => it.kind === 'toilet');
+    const nearest = arr.length ? arr[0].d : Infinity;
+    if (!hasAny) top = '<div class="note">기저귀 교환대 화장실 자료를 준비하고 있어요.</div>';
+    else if (!state.query && nearest > 5000) top = '<div class="note">이 근처는 아직 기저귀 화장실 자료가 없어요. 지금은 일부 지역(경기·제주·서울 지하철역 등)만 있어요. 수유실에도 대부분 기저귀 교환대가 있어요.</div>';
+    else top = '<div class="note" style="background:#F2FAF8;color:#2C6B60">기저귀 교환대가 있는 공중화장실이에요. 수유실은 아니에요.</div>';
+  }
 
   const list = $('#list');
   if (!arr.length) {
     let msg = '조건에 맞는 곳이 없어요.';
-    if (state.fav) msg = '아직 즐겨찾기한 곳이 없어요.<br>수유실을 누르고 ⭐를 눌러 추가해 보세요.';
-    else if (state.query) msg = `‘${esc(state.query)}’ 이름이나 주소의 수유실이 없어요.<br>다른 말로 찾아보세요.`;
-    list.innerHTML = `<div class="empty">${msg}</div>`;
+    if (state.tab === 'fav') msg = '아직 즐겨찾기한 곳이 없어요.<br>수유실을 누르고 ☆ 즐겨찾기를 눌러 추가해 보세요.';
+    else if (state.query) msg = `‘${esc(state.query)}’ 이름이나 주소로 찾은 곳이 없어요.<br>다른 말로 찾아보세요.`;
+    else if (state.tab === 'toilets') msg = '';
+    list.innerHTML = top + (msg ? `<div class="empty">${msg}</div>` : '');
     return;
   }
   const html = arr.slice(0, state.shown).map(({ it, d }) => `
@@ -309,7 +328,7 @@ function renderList() {
       </div>
       <div class="dist">${fmtDist(d)}</div>
     </button>`).join('');
-  list.innerHTML = html + (arr.length > state.shown ? `<button class="more" id="moreBtn">더 보기 (${(arr.length - state.shown).toLocaleString()}곳 더)</button>` : '');
+  list.innerHTML = top + html + (arr.length > state.shown ? `<button class="more" id="moreBtn">더 보기 (${(arr.length - state.shown).toLocaleString()}곳 더)</button>` : '');
 }
 
 function setOriginLabel() {
@@ -567,36 +586,37 @@ function toast(msg) {
 }
 
 /* ---------- 필터 버튼 ---------- */
+function setTab(tab) {
+  if (tab === state.tab) return;
+  state.tab = tab; state.shown = PAGE;
+  $('#list').scrollTop = 0;
+  syncChips(); renderList(); renderMarkers();
+}
 function syncChips() {
   document.querySelectorAll('#seg button').forEach((b) => {
     const on = b.dataset.type === state.type;
     b.classList.toggle('on', on); b.setAttribute('aria-checked', on);
   });
-  document.querySelectorAll('#chips .chip').forEach((b) => {
-    const on = !!state[b.dataset.toggle];
-    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+  document.querySelectorAll('#tabs button').forEach((b) => {
+    const on = b.dataset.tab === state.tab;
+    b.classList.toggle('on', on); b.setAttribute('aria-selected', on);
   });
+  $('#seg').classList.toggle('dim', state.tab !== 'rooms');
 }
 
 /* ---------- 이벤트 ---------- */
 function bind() {
   $('#seg').addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-type]'); if (!b || b.dataset.type === state.type) return;
-    state.type = b.dataset.type;
+    const b = e.target.closest('button[data-type]'); if (!b) return;
+    if (b.dataset.type === state.type && state.tab === 'rooms') return;
+    state.type = b.dataset.type; state.tab = 'rooms';
     state.shown = PAGE;
     syncChips(); saveFilter(); renderList(); renderMarkers();
   });
-  $('#chips').addEventListener('click', (e) => {
-    const b = e.target.closest('.chip'); if (!b || !b.dataset.toggle) return;
-    const k = b.dataset.toggle;
-    state[k] = !state[k];
-    const msg = {
-      toilets: state.toilets ? (state.items.some((x) => x.kind === 'toilet') ? '기저귀 교환대 화장실도 같이 보여요' : '아직 기저귀 화장실 자료가 없어요') : '기저귀 화장실을 숨겼어요',
-      fav: state.fav ? '즐겨찾기한 곳만 보여요' : '즐겨찾기 조건을 껐어요',
-    }[k];
-    if (msg) toast(msg);
-    state.shown = PAGE;
-    syncChips(); saveFilter(); renderList(); renderMarkers();
+  $('#tabs').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-tab]'); if (!b) return;
+    setTab(b.dataset.tab);
+    if ($('#sheet').classList.contains('mini')) setSheet('half');
   });
   $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); doSearch($('#q').value); });
   $('#q').addEventListener('input', () => {
@@ -610,7 +630,7 @@ function bind() {
     renderList();
   });
   $('#sheetHead').addEventListener('click', (e) => {
-    if (e.target.closest('#backToMe')) return;
+    if (e.target.closest('#backToMe') || e.target.closest('#tabs')) return;
     const s = $('#sheet');
     setSheet(s.classList.contains('full') ? 'half' : s.classList.contains('mini') ? 'half' : 'full');
   });
@@ -622,6 +642,7 @@ function bind() {
   });
   $('#list').addEventListener('click', (e) => {
     if (e.target.id === 'moreBtn') { state.shown += PAGE; renderList(); return; }
+    if (e.target.closest('#goToilets')) { setTab('toilets'); return; }
     const b = e.target.closest('.item'); if (b) openDetail(b.dataset.id);
   });
   $('#meBtn').addEventListener('click', () => locate(true));
@@ -636,7 +657,7 @@ function bind() {
       saveFavs();
       const it = state.items.find((x) => x.id === id);
       if (it) refreshMarkerImage(it);
-      renderList(); if (state.fav) renderMarkers();
+      renderList(); if (state.tab === 'fav') renderMarkers();
       openDetail(id);
       return;
     }
