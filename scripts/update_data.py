@@ -303,6 +303,41 @@ def gate_of(v):
     return ""
 
 
+# 물품 항목 (이름으로 뜻이 분명한 것만 표시)
+SUBWAY_ITEMS = [
+    ("dprSwchbrdCnt", "기저귀 교환대"), ("mwovenEn", "전자레인지"), ("wshstndEn", "세면대"),
+    ("rfgrEn", "냉장고"), ("portEn", "전기포트"), ("infntBedEn", "아기 침대"),
+    ("sofaCnt", "소파"), ("nrspcLockEn", "문 잠금"), ("acEn", "에어컨"), ("htrEn", "난방기"),
+]
+
+
+def fmt_tel(t):
+    t = re.sub(r"\D", "", str(t or ""))
+    if t.startswith("02") and len(t) in (9, 10):
+        return f"02-{t[2:-4]}-{t[-4:]}"
+    if len(t) in (10, 11):
+        return f"{t[:3]}-{t[3:-4]}-{t[-4:]}"
+    return t
+
+
+def fmt_floor(f):
+    f = str(f or "").strip().upper()
+    m = re.fullmatch(r"B(\d+)", f)
+    if m:
+        return f"지하 {m.group(1)}층"
+    m = re.fullmatch(r"(\d+)F?", f)
+    if m:
+        return f"지상 {m.group(1)}층"
+    return f
+
+
+def has_item(d, k):
+    v = d.get(k)
+    if isinstance(v, (int, float)):
+        return v > 0
+    return str(v).strip().upper() == "Y"
+
+
 def norm_subway(d, coords, idx):
     stn = str(pick(d, "stnNm")).strip()
     line = str(pick(d, "lineNm")).strip()
@@ -311,38 +346,45 @@ def norm_subway(d, coords, idx):
         return None
     gate_raw = pick(d, "gateInoutSe", "gateInoutSeNm")
     gate = gate_of(gate_raw)
-    floor = " ".join(x for x in [str(pick(d, "grndUdgdSe", "grndUdgdSeNm")).strip(), str(pick(d, "stnFlr", "flr")).strip()] if x)
-    exitno = str(pick(d, "vcntEntrcNo")).strip()
-    detail = str(pick(d, "dtlPstn", "instlPlcDtlPstn")).strip()
+    floor = fmt_floor(pick(d, "stnFlr"))
+    exitno = str(pick(d, "exitNo", "vcntEntrcNo")).strip()
+    detail = re.sub(r"^\s*B?\d+\s*(층)?\s*", "", str(pick(d, "dtlPstn", "instlPlcDtlPstn")).strip())
+    detail = re.sub(r"\s+", " ", detail)
     bits = []
     if gate == "in":
         bits.append("개찰구 안")
     elif gate == "out":
         bits.append("개찰구 밖")
     if floor:
-        bits.append(floor if re.search(r"층|F|B", floor) else floor + "층")
-    if exitno:
-        bits.append(f"{exitno}번 출구 근처" if re.fullmatch(r"\d+(-\d+)?", exitno) else exitno)
+        bits.append(floor)
     if detail:
         bits.append(detail)
+    if exitno:
+        bits.append(re.sub(r"\s*,\s*", "·", exitno) + "번 출구 쪽" if re.fullmatch(r"[\d,\s\-]+", exitno) else exitno)
     stn_name = re.sub(r"\(.*?\)", "", stn).strip()
     if not stn_name.endswith("역"):
         stn_name += "역"
-    mng = str(pick(d, "mngNo")).strip()
+    kind = str(pick(d, "fcltSeNm")).strip()
+    typ = "family" if "가족" in kind else "breast" if ("모유" in kind or "착유" in kind) else ""
+    how = str(pick(d, "nrsrmUtztnMth")).strip()
+    how = {"1인가족 단독사용": "한 가족씩 따로 써요"}.get(how, how)
+    hours = str(pick(d, "utztnHr", "utztnPsbltyHr")).strip()
+    hours = {"영업시간내": "지하철 운행 시간 동안"}.get(hours, hours)
+    items = [name for k, name in SUBWAY_ITEMS if has_item(d, k)]
     return {
-        "id": "m" + (mng or f"{pick(d, 'stnCd')}-{idx}"),
+        "id": "m" + str(pick(d, "stnCd") or stn) + ("f" if typ == "family" else "b" if typ == "breast" else ""),
         "kind": "subway",
         "name": f"{stn_name} 수유실" + (f" ({line})" if line else ""),
-        "type": "",
-        "father": None,
+        "type": typ,
+        "father": True if typ == "family" else False if typ == "breast" else None,
         "gate": gate,
-        "gateRaw": str(gate_raw or ""),
         "addr": f"서울 지하철 {line} {stn_name}".strip(),
         "place": " · ".join(bits),
-        "tel": str(pick(d, "operInstTelno", "telno")).strip(),
-        "hours": str(pick(d, "utztnPsbltyHr")).strip(),
-        "how": str(pick(d, "nrsrmUtztnMth")).strip(),
-        "lat": c[0] + (idx % 3) * 0.00001,   # 같은 역 여러 곳이 완전히 겹치지 않게 아주 살짝
+        "tel": fmt_tel(pick(d, "operInstTelno")),
+        "hours": hours,
+        "how": how,
+        "items": items,
+        "lat": c[0],
         "lng": c[1],
         "region": "서울 " + stn_name,
         "src": "seoulmetro",
@@ -358,13 +400,16 @@ def update_subway(key, kakao_key):
         write_debug([], {}, "subway_sample.json", {"tried": tried})
         return None
     # 수유실이 아닌 시설이 섞여 오면 거르기
-    fcl = [r for r in rows if "수유" in str(pick(r, "fcltSeNm", "fcltNm")) or not pick(r, "fcltSeNm")]
+    fcl = [r for r in rows if "수유" in str(pick(r, "fcltNm")) + str(pick(r, "fcltSeNm")) or not (pick(r, "fcltNm") or pick(r, "fcltSeNm"))]
     pairs = sorted({(str(pick(r, "stnNm")).strip(), str(pick(r, "lineNm")).strip()) for r in fcl})
     coords = geocode_stations(pairs, kakao_key)
     out = []
     for i, r in enumerate(fcl):
         n = norm_subway(r, coords, i)
         if n:
+            base, k = n["id"], 2
+            while any(x["id"] == n["id"] for x in out):   # 같은 역에 같은 종류가 또 있으면 번호 붙이기
+                n["id"] = f"{base}-{k}"; k += 1
             out.append(n)
     gates = sorted({str(pick(r, "gateInoutSe")) for r in fcl})
     write_debug(fcl, resp, "subway_sample.json", {"operation": op, "tried": tried, "gate_values": gates,

@@ -194,7 +194,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '2026.11.20';
+const APP_VERSION = '2026.11.20b';
 const KAKAO_JS_KEY = 'd34d91c8d1966bf88d70da960b850c56';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청
 const LS_FAV = 'nursing-map-v1-fav';
@@ -730,6 +730,7 @@ function openDetail(id) {
   if (it.kind === 'toilet' && it.open) rows.push(['개방', esc(it.open)]);
   if (it.gate) rows.push(['개찰구', it.gate === 'in' ? '🎫 개찰구 <b>안</b> (교통카드를 찍고 들어가야 해요)' : '🚪 개찰구 <b>밖</b> (카드 안 찍고 갈 수 있어요)']);
   if (it.hours) rows.push(['이용 시간', esc(it.hours)]);
+  if (it.items && it.items.length) rows.push(['있는 것', '<span class="tags" style="margin:0">' + it.items.map((x) => `<span class="tag">${esc(x)}</span>`).join('') + '</span>']);
   if (it.how) rows.push(['이용 방법', esc(it.how)]);
   if (it.tel) rows.push(['전화', esc(it.tel)]);
   if (d != null) rows.push(['거리', (state.me ? '내 위치에서 ' : '기준 위치에서 ') + fmtDist(d) + (d <= 3000 ? ` · 걸어서 약 ${walkMin(d)}분` : '') + '<br><small style="color:var(--sub)">직선거리로 어림잡은 시간이에요</small>']);
