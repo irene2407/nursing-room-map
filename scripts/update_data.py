@@ -367,7 +367,7 @@ def norm_subway(d, coords, idx):
     kind = str(pick(d, "fcltSeNm")).strip()
     typ = "family" if "가족" in kind else "breast" if ("모유" in kind or "착유" in kind) else ""
     how = str(pick(d, "nrsrmUtztnMth")).strip()
-    how = {"1인가족 단독사용": "한 가족씩 따로 써요"}.get(how, how)
+    how = {"1인가족 단독사용": "한 가족씩 따로 써요", "다수가족 공동사용": "여러 가족이 같이 써요"}.get(how, how)
     hours = str(pick(d, "utztnHr", "utztnPsbltyHr")).strip()
     hours = {"영업시간내": "지하철 운행 시간 동안"}.get(hours, hours)
     items = [name for k, name in SUBWAY_ITEMS if has_item(d, k)]
