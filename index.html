@@ -140,6 +140,15 @@
   .info p { font-size: 14px; line-height: 1.6; margin: 8px 0; }
   .group-sub { font-size: 13.5px; color: var(--sub); margin: 0 0 6px; line-height: 1.5; }
   .modal .item { padding: 12px 2px; }
+  .parking { margin-top: 12px; padding: 11px 12px; border-radius: 12px; background: #F2F6FC; }
+  .parking .p-title { font-size: 14px; font-weight: 700; margin-bottom: 6px; color: #234; }
+  .parking .p-body { font-size: 14px; color: var(--sub); }
+  .parking .p-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid #E3EAF4; }
+  .parking .p-row:first-child { border-top: 0; }
+  .parking .p-name { flex: 1; min-width: 0; color: var(--ink); text-decoration: none; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .parking .p-dist { flex: none; color: var(--sub); font-size: 13px; }
+  .parking .p-go { flex: none; font-size: 13px; color: #1F63C4; text-decoration: none; padding: 4px 9px; border-radius: 9px; background: #E3EEFD; font-weight: 600; }
+  .parking .p-note { font-size: 12px; color: #7A8796; margin-top: 4px; }
   .sib { display: block; width: 100%; margin-top: 10px; padding: 11px; border-radius: 12px; background: #FFF4EC; color: var(--accent-dark); font-weight: 600; font-size: 14px; text-align: center; }
   .info .legend { display: grid; gap: 8px; margin: 12px 0; font-size: 14px; }
   .info .legend div { display: flex; align-items: center; gap: 8px; }
@@ -195,7 +204,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '2026.11.20c';
+const APP_VERSION = '2026.11.20d';
 const KAKAO_JS_KEY = 'd34d91c8d1966bf88d70da960b850c56';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청
 const LS_FAV = 'nursing-map-v1-fav';
@@ -755,8 +764,43 @@ function openDetail(id) {
       <button class="btn soft wide" data-show="${esc(it.id)}">🗺️ 지도에서 보기</button>
     </div>
     ${sib.length ? `<button class="sib" data-group="${esc(it.id)}">🏢 같은 건물의 다른 곳 ${sib.length}곳 더 보기</button>` : ''}
+    <div class="parking" id="parking"><div class="p-title">🅿️ 근처 주차장</div><div class="p-body">찾는 중…</div></div>
     <div class="hint">${hint}</div>
     ${fix}`);
+  detailId = it.id;
+  loadParking(it);
+}
+
+/* ---------- 근처 주차장 (카카오 장소 검색, 주차장 PK6) ---------- */
+let detailId = null;
+const parkingCache = new Map();
+const PARKING_RADIUS = 500;
+function renderParking(it, list) {
+  const box = document.querySelector('#parking .p-body');
+  if (!box || detailId !== it.id) return;   // 그사이 다른 창을 열었으면 그대로 둠
+  if (list === null) { box.innerHTML = '<span class="p-none">주차장 정보를 불러오지 못했어요</span>'; return; }
+  if (!list.length) { box.innerHTML = `<span class="p-none">${PARKING_RADIUS}m 안에 주차장이 없어요</span>`; return; }
+  box.innerHTML = list.map((p) => {
+    const nm = String(p.place_name).replace(/,/g, ' ');
+    return `<div class="p-row">
+      <a class="p-name" href="${esc(p.place_url || ('https://map.kakao.com/link/map/' + encodeURIComponent(nm) + ',' + p.y + ',' + p.x))}" target="_blank" rel="noopener">${esc(p.place_name)}</a>
+      <span class="p-dist">${fmtDist(+p.distance)}</span>
+      <a class="p-go" href="https://map.kakao.com/link/to/${encodeURIComponent(nm)},${esc(p.y)},${esc(p.x)}" target="_blank" rel="noopener">길찾기</a>
+    </div>`;
+  }).join('') + '<div class="p-note">빈자리·요금은 이름을 눌러 카카오맵에서 확인해 주세요</div>';
+}
+function loadParking(it) {
+  if (parkingCache.has(it.id)) { renderParking(it, parkingCache.get(it.id)); return; }
+  if (!(window.kakao && kakao.maps && kakao.maps.services)) { renderParking(it, null); return; }
+  const ps = new kakao.maps.services.Places();
+  const S = kakao.maps.services;
+  ps.categorySearch('PK6', (res, status) => {
+    let list = null;
+    if (status === S.Status.OK) list = res.slice(0, 3);
+    else if (status === S.Status.ZERO_RESULT) list = [];
+    if (list) parkingCache.set(it.id, list);
+    renderParking(it, list);
+  }, { location: new kakao.maps.LatLng(it.lat, it.lng), radius: PARKING_RADIUS, sort: S.SortBy ? S.SortBy.DISTANCE : undefined, size: 3 });
 }
 
 function openInfo() {
