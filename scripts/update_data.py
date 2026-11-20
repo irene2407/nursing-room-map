@@ -269,14 +269,16 @@ def geocode_stations(pairs, kakao_key):
     if os.path.exists(COORDS_FILE):
         with open(COORDS_FILE, encoding="utf-8") as f:
             cache = json.load(f)
-    missing = [p for p in pairs if f"{p[0]}|{p[1]}" not in cache]
+    def line_ok(k, line):   # 저장된 좌표가 다른 노선 출구 쪽이면 다시 찾기
+        return not line or line in str(cache[k][2] if len(cache[k]) > 2 else "")
+    missing = [p for p in pairs if f"{p[0]}|{p[1]}" not in cache or not line_ok(f"{p[0]}|{p[1]}", p[1])]
     if missing and not kakao_key:
         log(f"KAKAO_REST_KEY 가 없어서 역 {len(missing)}곳의 좌표를 찾지 못했어요.")
     elif missing:
         for stn, line in missing:
             for q in (station_query(stn, line), station_query(stn, "")):
                 url = "https://dapi.kakao.com/v2/local/search/keyword.json?" + urllib.parse.urlencode(
-                    {"query": q, "category_group_code": "SW8", "size": 1})
+                    {"query": q, "category_group_code": "SW8", "size": 5})
                 try:
                     r = http_json(url, headers={"Authorization": "KakaoAK " + kakao_key}, secrets=(kakao_key,))
                 except RuntimeError as e:
@@ -284,7 +286,11 @@ def geocode_stations(pairs, kakao_key):
                     break
                 docs = r.get("documents") or []
                 if docs:
-                    cache[f"{stn}|{line}"] = [round(float(docs[0]["y"]), 6), round(float(docs[0]["x"]), 6), docs[0].get("place_name", "")]
+                    # 같은 역이라도 노선마다 위치가 달라서, 노선 이름이 맞는 결과를 먼저 고름
+                    base = re.sub(r"\(.*?\)", "", stn).strip().rstrip("역")
+                    best = next((x for x in docs if line and line in x.get("place_name", "") and base in x.get("place_name", "")), None) \
+                        or next((x for x in docs if base in x.get("place_name", "")), None) or docs[0]
+                    cache[f"{stn}|{line}"] = [round(float(best["y"]), 6), round(float(best["x"]), 6), best.get("place_name", "")]
                     break
             time.sleep(0.15)
         with open(COORDS_FILE, "w", encoding="utf-8") as f:

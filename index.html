@@ -61,7 +61,9 @@
   .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
   .seg button.on .dot { box-shadow: 0 0 0 1.5px #fff; }
 
-  #notice { margin-top: 6px; font-size: 12.5px; color: #8A4B2E; background: #FFE9DE; border-radius: 10px; padding: 7px 10px; display: none; line-height: 1.45; }
+  #notice { margin-top: 6px; font-size: 12.5px; color: #8A4B2E; background: #FFE9DE; border-radius: 10px; padding: 7px 4px 7px 10px; display: none; line-height: 1.45; align-items: flex-start; gap: 4px; }
+  #noticeText { flex: 1; }
+  #noticeX { flex: none; width: 28px; height: 22px; font-size: 13px; color: #B07A60; }
 
   /* 지도 */
   #map { position: fixed; inset: 0; z-index: 1; background: #EEE7E2; }
@@ -180,7 +182,7 @@
     <button data-type="family" role="radio"><span><i class="dot" style="background:var(--family)"></i>가족수유실</span><small>아빠 OK</small></button>
     <button data-type="breast" role="radio"><span><i class="dot" style="background:var(--breast)"></i>모유·착유실</span><small>엄마 전용</small></button>
   </div>
-  <div id="notice"></div>
+  <div id="notice"><span id="noticeText"></span><button id="noticeX" aria-label="안내 닫기">✕</button></div>
 </div>
 
 <button class="fab" id="meBtn" aria-label="내 위치">◎</button>
@@ -204,7 +206,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '2026.11.20d';
+const APP_VERSION = '2026.11.20e';
 const KAKAO_JS_KEY = 'd34d91c8d1966bf88d70da960b850c56';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청
 const LS_FAV = 'nursing-map-v1-fav';
@@ -227,6 +229,7 @@ const state = {
   byId: new Map(),
 };
 const LS_DATA = 'nursing-map-v1-data';
+const LS_NOTICE = 'nursing-map-v1-notice-hidden';   // 닫은 안내 문구 (문구가 바뀌면 다시 보임)
 const SAME_SPOT = 15;        // 이 거리(m) 안이면 같은 건물로 봄
 
 /* ---------- 저장 ---------- */
@@ -533,13 +536,13 @@ function doSearch(q) {
     const ps = new kakao.maps.services.Places();
     const OK = kakao.maps.services.Status.OK;
     const center = map ? map.getCenter() : (state.origin ? new kakao.maps.LatLng(state.origin.lat, state.origin.lng) : null);
-    const handle = (res, status) => {
+    const handle = (res, status, placeLike) => {
       if (status === OK && res.length) {
         const r = res[0];
         const lat = +r.y, lng = +r.x;
         state.origin = { lat, lng, kind: 'place', label: `📍 ‘${r.place_name}’ 근처 · 가까운 순` };
-        // 이름이 맞는 수유실이 없으면 그 근처 수유실을 보여줌
-        if (!local.length) state.query = '';
+        // 지역·역·명소면 그 근처 수유실 전부, 가게 이름인데 이름 맞는 수유실이 없어도 근처 전부
+        if (placeLike || !local.length) state.query = '';
         panTo(lat, lng, 5);
         showPlace(lat, lng, r.place_name);
         setOriginLabel(); renderList(); setSheet('half');
@@ -553,7 +556,7 @@ function doSearch(q) {
     ps.keywordSearch(q, (res, status) => {
       const top = status === OK && res.length ? res[0] : null;
       const placeLike = top && (PLACE_LIKE.test(top.category_name || '') || top.place_name.replace(/\s/g, '') === q.replace(/\s/g, ''));
-      if (!center || placeLike) { handle(res, status); return; }
+      if (!center || placeLike) { handle(res, status, placeLike); return; }
       ps.keywordSearch(q, (r2, s2) => {
         if (s2 === OK && r2.length) handle(r2, s2); else handle(res, status);
       }, { size: 1, location: center, radius: 20000 });
@@ -695,7 +698,8 @@ function kakaoLink(it) {
 }
 function openNaver(it) {
   const app = `nmap://route/walk?dlat=${it.lat}&dlng=${it.lng}&dname=${encodeURIComponent(it.name)}&appname=${encodeURIComponent(location.hostname || 'nursing-map')}`;
-  const web = `https://map.naver.com/p/search/${encodeURIComponent(it.addr || it.name)}`;
+  const q = it.kind === 'subway' ? ((it.region || '').replace(/^서울\s*/, '') || it.name) : (it.addr || it.name);
+  const web = `https://map.naver.com/p/search/${encodeURIComponent(q)}`;
   const t = setTimeout(() => { if (!document.hidden) location.href = web; }, 1400);
   document.addEventListener('visibilitychange', function h() { if (document.hidden) { clearTimeout(t); document.removeEventListener('visibilitychange', h); } });
   location.href = app;
@@ -782,10 +786,12 @@ function renderParking(it, list) {
   if (!list.length) { box.innerHTML = `<span class="p-none">${PARKING_RADIUS}m 안에 주차장이 없어요</span>`; return; }
   box.innerHTML = list.map((p) => {
     const nm = String(p.place_name).replace(/,/g, ' ');
+    const u = String(p.place_url || '');
+    const placeUrl = /^https?:\/\//.test(u) ? u.replace(/^http:/, 'https:') : '';
     return `<div class="p-row">
-      <a class="p-name" href="${esc(p.place_url || ('https://map.kakao.com/link/map/' + encodeURIComponent(nm) + ',' + p.y + ',' + p.x))}" target="_blank" rel="noopener">${esc(p.place_name)}</a>
+      <a class="p-name" href="${esc(placeUrl || ('https://map.kakao.com/link/map/' + encodeURIComponent(nm) + ',' + (+p.y) + ',' + (+p.x)))}" target="_blank" rel="noopener">${esc(p.place_name)}</a>
       <span class="p-dist">${fmtDist(+p.distance)}</span>
-      <a class="p-go" href="https://map.kakao.com/link/to/${encodeURIComponent(nm)},${esc(p.y)},${esc(p.x)}" target="_blank" rel="noopener">길찾기</a>
+      <a class="p-go" href="https://map.kakao.com/link/to/${encodeURIComponent(nm)},${+p.y},${+p.x}" target="_blank" rel="noopener">길찾기</a>
     </div>`;
   }).join('') + '<div class="p-note">빈자리·요금은 이름을 눌러 카카오맵에서 확인해 주세요</div>';
 }
@@ -907,7 +913,9 @@ function bind() {
       const it = state.byId.get(id);
       if (it) refreshMarkerImage(it);
       renderList(); if (state.tab === 'fav') renderMarkers();
+      const keep = $('#modal').scrollTop;
       openDetail(id);
+      $('#modal').scrollTop = keep;
       return;
     }
     const n = e.target.closest('[data-naver]');
@@ -920,6 +928,12 @@ function bind() {
     }
   });
   window.addEventListener('resize', fitSheet);
+  $('#noticeX').addEventListener('click', () => {
+    const n = $('#notice');
+    try { localStorage.setItem(LS_NOTICE, n.dataset.text || ''); } catch (e) {}
+    n.style.display = 'none';
+    fitSheet();
+  });
   bindDrag();
 }
 
@@ -942,8 +956,13 @@ function applyData(d) {
     if (changed) saveFavs();
   }
   const n = $('#notice');
-  n.style.display = d.sample ? 'block' : 'none';
-  if (d.sample) n.textContent = d.note || '지금은 견본 데이터 몇 곳만 보여요. 수유정보 알리미 키가 오면 전국 수유실로 바뀌어요.';
+  const noteText = d.sample ? (d.note || '지금은 견본 데이터 몇 곳만 보여요. 수유정보 알리미 키가 오면 전국 수유실로 바뀌어요.') : '';
+  let hidden = '';
+  try { hidden = localStorage.getItem(LS_NOTICE) || ''; } catch (e) {}
+  n.style.display = noteText && noteText !== hidden ? 'flex' : 'none';
+  n.dataset.text = noteText;
+  $('#noticeText').textContent = noteText;
+  fitSheet();
   renderList(); renderMarkers();
 }
 async function loadData(quiet) {
@@ -973,6 +992,8 @@ async function loadData(quiet) {
 
 (async function start() {
   loadLocal(); syncChips(); bind(); fitSheet(); setSheet('half');
+  const kakaoReady = loadKakao();          // 지도는 자료와 동시에 불러오기 시작
+  kakaoReady.catch(() => {});
   try { await loadData(); } catch (e) { $('#list').innerHTML = '<div class="empty">수유실 자료를 불러오지 못했어요.<br>인터넷 연결을 확인하고 다시 열어 주세요.</div>'; }
   locate(false);
   // 6. 앱을 다시 열면 내 위치(1분 지났으면)와 자료(1시간 지났으면) 다시 확인
@@ -982,7 +1003,7 @@ async function loadData(quiet) {
     if (Date.now() - lastFetch > 60 * 60 * 1000) loadData(true).catch(() => {});
   });
   try {
-    await loadKakao();
+    await kakaoReady;
     initMap();
   } catch (e) {
     const m = $('#mapMsg'); m.style.display = 'grid';
