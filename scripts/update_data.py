@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -172,36 +173,215 @@ def fetch_sooyusil(key):
     return rows, sample_resp
 
 
-def write_debug(rows, resp):
+def write_debug(rows, resp, name="sooyusil_sample.json", extra=None):
     os.makedirs(DEBUG_DIR, exist_ok=True)
     keys = sorted({k for r in rows[:200] for k in r.keys()})
     top = {k: (type(v).__name__) for k, v in resp.items()} if isinstance(resp, dict) else type(resp).__name__
-    with open(os.path.join(DEBUG_DIR, "sooyusil_sample.json"), "w", encoding="utf-8") as f:
-        json.dump({"checked": datetime.datetime.now(KST).isoformat(timespec="seconds"),
-                   "count": len(rows), "top_level": top, "field_names": keys, "first_rows": rows[:3]},
-                  f, ensure_ascii=False, indent=1)
+    out = {"checked": datetime.datetime.now(KST).isoformat(timespec="seconds"),
+           "count": len(rows), "top_level": top, "field_names": keys, "first_rows": rows[:3]}
+    if extra:
+        out.update(extra)
+    with open(os.path.join(DEBUG_DIR, name), "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False, indent=1)
 
 
-def main():
-    key = os.environ.get("SOOYUSIL_KEY", "").strip()
-    old = {}
-    if os.path.exists(OUT):
-        with open(OUT, encoding="utf-8") as f:
-            old = json.load(f)
+# ---------------------------------------------------------------- 서울 지하철
+SUBWAY_API = "https://apis.data.go.kr/B553766/facility/"
+# 수유실 조회 주소 이름은 설명서에 없어서 후보를 차례로 시도 (엘리베이터는 getFcElvtr)
+SUBWAY_OPS = ["getFcNrsrm", "getFcNrsRm", "getFcNursrm", "getFcBbyrm", "getFcFdrm"]
+COORDS_FILE = os.path.join(ROOT, "data", "station_coords.json")
 
-    if not key:
-        log("SOOYUSIL_KEY 가 없어서 수유실 자료는 그대로 둡니다.")
-        return 0
 
+def http_json(url, headers=None, secrets=()):
+    req = urllib.request.Request(url, headers={"User-Agent": "nursing-room-map", **(headers or {})})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            text = r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace")[:300]
+        for sct in secrets:
+            body = body.replace(sct, "***")
+        raise RuntimeError(f"HTTP {e.code}: {body}") from None
+    except Exception as e:
+        raise RuntimeError(f"요청 실패: {type(e).__name__}") from None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        t = text[:300]
+        for sct in secrets:
+            t = t.replace(sct, "***")
+        raise RuntimeError("JSON이 아닌 응답: " + t)
+
+
+def find_key(o, name):
+    if isinstance(o, dict):
+        for k, v in o.items():
+            if k == name:
+                return v
+            r = find_key(v, name)
+            if r is not None:
+                return r
+    elif isinstance(o, list):
+        for x in o:
+            r = find_key(x, name)
+            if r is not None:
+                return r
+    return None
+
+
+def fetch_subway_rows(key):
+    tried = {}
+    for op in SUBWAY_OPS:
+        rows, page, total, first = [], 1, None, None
+        try:
+            while True:
+                q = urllib.parse.urlencode({"serviceKey": key, "dataType": "JSON", "pageNo": page, "numOfRows": 1000})
+                resp = http_json(SUBWAY_API + op + "?" + q, secrets=(key, urllib.parse.quote(key)))
+                first = first or resp
+                part = find_rooms(resp)
+                total = total or int(find_key(resp, "totalCount") or 0)
+                rows.extend(part)
+                log(f"  {op} {page}쪽: {len(part)}건 (전체 {total})")
+                if not part or len(rows) >= total or page >= 20:
+                    break
+                page += 1
+                time.sleep(0.5)
+        except RuntimeError as e:
+            tried[op] = str(e)[:200]
+            log(f"  {op}: {e}")
+            continue
+        if rows:
+            return op, rows, first, tried
+        tried[op] = "0건: " + json.dumps(first, ensure_ascii=False)[:200]
+    return None, [], {}, tried
+
+
+def station_query(stn, line):
+    name = re.sub(r"\(.*?\)", "", str(stn)).strip()
+    if not name.endswith("역"):
+        name += "역"
+    return (name + " " + str(line or "")).strip()
+
+
+def geocode_stations(pairs, kakao_key):
+    """역 이름 → 좌표. 한 번 찾은 역은 data/station_coords.json 에 저장해 두고 다시 찾지 않음."""
+    cache = {}
+    if os.path.exists(COORDS_FILE):
+        with open(COORDS_FILE, encoding="utf-8") as f:
+            cache = json.load(f)
+    missing = [p for p in pairs if f"{p[0]}|{p[1]}" not in cache]
+    if missing and not kakao_key:
+        log(f"KAKAO_REST_KEY 가 없어서 역 {len(missing)}곳의 좌표를 찾지 못했어요.")
+    elif missing:
+        for stn, line in missing:
+            for q in (station_query(stn, line), station_query(stn, "")):
+                url = "https://dapi.kakao.com/v2/local/search/keyword.json?" + urllib.parse.urlencode(
+                    {"query": q, "category_group_code": "SW8", "size": 1})
+                try:
+                    r = http_json(url, headers={"Authorization": "KakaoAK " + kakao_key}, secrets=(kakao_key,))
+                except RuntimeError as e:
+                    log(f"  좌표 찾기 실패 {q}: {e}")
+                    break
+                docs = r.get("documents") or []
+                if docs:
+                    cache[f"{stn}|{line}"] = [round(float(docs[0]["y"]), 6), round(float(docs[0]["x"]), 6), docs[0].get("place_name", "")]
+                    break
+            time.sleep(0.15)
+        with open(COORDS_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=0, sort_keys=True)
+    return cache
+
+
+def gate_of(v):
+    v = str(v or "").strip()
+    if not v:
+        return ""
+    if v in ("내", "안", "IN", "in", "I", "1") or "내부" in v or "안" in v or v.startswith("내"):
+        return "in"
+    if v in ("외", "밖", "OUT", "out", "O", "2") or "외부" in v or "밖" in v or v.startswith("외"):
+        return "out"
+    return ""
+
+
+def norm_subway(d, coords, idx):
+    stn = str(pick(d, "stnNm")).strip()
+    line = str(pick(d, "lineNm")).strip()
+    c = coords.get(f"{stn}|{line}")
+    if not c:
+        return None
+    gate_raw = pick(d, "gateInoutSe", "gateInoutSeNm")
+    gate = gate_of(gate_raw)
+    floor = " ".join(x for x in [str(pick(d, "grndUdgdSe", "grndUdgdSeNm")).strip(), str(pick(d, "stnFlr", "flr")).strip()] if x)
+    exitno = str(pick(d, "vcntEntrcNo")).strip()
+    detail = str(pick(d, "dtlPstn", "instlPlcDtlPstn")).strip()
+    bits = []
+    if gate == "in":
+        bits.append("개찰구 안")
+    elif gate == "out":
+        bits.append("개찰구 밖")
+    if floor:
+        bits.append(floor if re.search(r"층|F|B", floor) else floor + "층")
+    if exitno:
+        bits.append(f"{exitno}번 출구 근처" if re.fullmatch(r"\d+(-\d+)?", exitno) else exitno)
+    if detail:
+        bits.append(detail)
+    stn_name = re.sub(r"\(.*?\)", "", stn).strip()
+    if not stn_name.endswith("역"):
+        stn_name += "역"
+    mng = str(pick(d, "mngNo")).strip()
+    return {
+        "id": "m" + (mng or f"{pick(d, 'stnCd')}-{idx}"),
+        "kind": "subway",
+        "name": f"{stn_name} 수유실" + (f" ({line})" if line else ""),
+        "type": "",
+        "father": None,
+        "gate": gate,
+        "gateRaw": str(gate_raw or ""),
+        "addr": f"서울 지하철 {line} {stn_name}".strip(),
+        "place": " · ".join(bits),
+        "tel": str(pick(d, "operInstTelno", "telno")).strip(),
+        "hours": str(pick(d, "utztnPsbltyHr")).strip(),
+        "how": str(pick(d, "nrsrmUtztnMth")).strip(),
+        "lat": c[0] + (idx % 3) * 0.00001,   # 같은 역 여러 곳이 완전히 겹치지 않게 아주 살짝
+        "lng": c[1],
+        "region": "서울 " + stn_name,
+        "src": "seoulmetro",
+    }
+
+
+def update_subway(key, kakao_key):
+    if "%" in key:  # 'Encoding' 키를 넣었으면 원래 글자로 되돌림 (주소에 넣을 때 다시 인코딩됨)
+        key = urllib.parse.unquote(key)
+    op, rows, resp, tried = fetch_subway_rows(key)
+    if not rows:
+        log("지하철 수유실 자료를 받지 못했어요.")
+        write_debug([], {}, "subway_sample.json", {"tried": tried})
+        return None
+    # 수유실이 아닌 시설이 섞여 오면 거르기
+    fcl = [r for r in rows if "수유" in str(pick(r, "fcltSeNm", "fcltNm")) or not pick(r, "fcltSeNm")]
+    pairs = sorted({(str(pick(r, "stnNm")).strip(), str(pick(r, "lineNm")).strip()) for r in fcl})
+    coords = geocode_stations(pairs, kakao_key)
+    out = []
+    for i, r in enumerate(fcl):
+        n = norm_subway(r, coords, i)
+        if n:
+            out.append(n)
+    gates = sorted({str(pick(r, "gateInoutSe")) for r in fcl})
+    write_debug(fcl, resp, "subway_sample.json", {"operation": op, "tried": tried, "gate_values": gates,
+                                                   "stations": len(pairs), "with_coords": len(out)})
+    log(f"지하철 수유실 {len(fcl)}건 중 좌표 붙은 곳 {len(out)}곳 (역 {len(pairs)}곳, 개찰구 값 {gates})")
+    return out
+
+
+# ---------------------------------------------------------------- 알리미
+def update_sooyusil(key):
     try:
         rows, resp = fetch_sooyusil(key)
     except RuntimeError as e:
         log("알리미 자료를 받지 못했어요:", e)
-        return 1
+        return None
     write_debug(rows, resp)
-
-    rooms, skipped = [], 0
-    seen = set()
+    rooms, skipped, seen = [], 0, set()
     for r in rows:
         n = norm(r)
         if not n:
@@ -212,25 +392,61 @@ def main():
         seen.add(n["id"])
         rooms.append(n)
     log(f"좌표 있는 수유실 {len(rooms)}곳, 좌표 없어서 뺀 곳 {skipped}곳")
-
     if len(rooms) < 500:
         log("수유실이 너무 적어서(500곳 미만) 기존 자료를 유지합니다. _debug 파일을 확인하세요.")
-        return 1
+        return None
+    return sorted(rooms, key=lambda x: x["id"])
 
-    # 다른 자료(지하철 보강·화장실)는 그대로 이어 붙임
-    keep_rooms = [x for x in old.get("rooms", []) if x.get("src") not in ("sooyusil", "sample")]
-    toilets = [x for x in old.get("toilets", []) if x.get("src") != "sample"]
+
+def main():
+    old = {}
+    if os.path.exists(OUT):
+        with open(OUT, encoding="utf-8") as f:
+            old = json.load(f)
+    old_rooms = old.get("rooms", [])
+    by_src = lambda src: [x for x in old_rooms if x.get("src") == src]
+
+    sooyusil_key = os.environ.get("SOOYUSIL_KEY", "").strip()
+    data_key = os.environ.get("DATA_GO_KR_KEY", "").strip()
+    kakao_key = os.environ.get("KAKAO_REST_KEY", "").strip()
+
+    # 각 자료는 새로 받지 못하면 예전 것을 그대로 씀
+    soo = update_sooyusil(sooyusil_key) if sooyusil_key else None
+    if soo is None:
+        soo = by_src("sooyusil")
+        if not sooyusil_key:
+            log("SOOYUSIL_KEY 가 없어서 알리미 자료는 그대로 둡니다.")
+    sub = update_subway(data_key, kakao_key) if data_key else None
+    if sub is None:
+        sub = by_src("seoulmetro")
+        if not data_key:
+            log("DATA_GO_KR_KEY 가 없어서 지하철 자료는 그대로 둡니다.")
+
+    real = bool(soo)
+    rooms = list(soo) + list(sub)
+    if not real:
+        # 알리미 자료가 오기 전: 견본은 남기되, 진짜 지하철 자료가 있으면 견본 지하철은 뺌
+        rooms = [x for x in old_rooms if x.get("src") == "sample" and not (sub and x.get("kind") == "subway")] + rooms
+    toilets = [x for x in old.get("toilets", []) if (x.get("src") != "sample" or not real)]
+
+    if sub and not real:
+        note = "서울 지하철역 수유실은 실제 자료예요. 다른 곳은 아직 견본 데이터 몇 곳만 있어요."
+    elif not real:
+        note = "지금은 견본 데이터 몇 곳만 보여요. 수유정보 알리미 키가 오면 전국 수유실로 바뀌어요."
+    else:
+        note = ""
     data = {
         "version": 1,
         "updated": datetime.datetime.now(KST).strftime("%Y-%m-%d"),
-        "sample": False,
-        "counts": {"sooyusil": len(rooms), "extra_rooms": len(keep_rooms), "toilets": len(toilets)},
-        "rooms": sorted(rooms, key=lambda x: x["id"]) + keep_rooms,
+        "sample": not real,
+        "note": note,
+        "counts": {"sooyusil": len(soo), "subway": len(sub), "toilets": len(toilets)},
+        "rooms": rooms,
         "toilets": toilets,
     }
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
-    log("저장 완료:", OUT)
+    log("저장 완료:", OUT, data["counts"])
     return 0
 
 

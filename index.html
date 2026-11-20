@@ -112,6 +112,8 @@
   .tag.subway { background: #E3EEFD; color: #1F63C4; }
   .tag.toilet { background: #DDF4EF; color: #0D7C69; }
   .tag.dad { background: #E9F3E3; color: #3F7A22; }
+  .tag.gate-in { background: #FFF1D6; color: #8A5A00; }
+  .tag.gate-out { background: #EDEDED; color: #555; }
   .empty { text-align: center; color: var(--sub); font-size: 14px; padding: 30px 10px; line-height: 1.6; }
   .more { display: block; width: 100%; padding: 14px; color: var(--accent-dark); font-weight: 600; font-size: 14px; }
 
@@ -192,7 +194,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '2026.11.19g';
+const APP_VERSION = '2026.11.20';
 const KAKAO_JS_KEY = 'd34d91c8d1966bf88d70da960b850c56';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청
 const LS_FAV = 'nursing-map-v1-fav';
@@ -277,6 +279,8 @@ function tagsHtml(it) {
   if (it.kind === 'toilet') t.push('<span class="tag toilet">🚼 기저귀 교환대 화장실</span>');
   else {
     if (it.kind === 'subway') t.push('<span class="tag subway">🚇 지하철역</span>');
+    if (it.gate === 'in') t.push('<span class="tag gate-in">🎫 개찰구 안</span>');
+    else if (it.gate === 'out') t.push('<span class="tag gate-out">🚪 개찰구 밖</span>');
     if (it.type) t.push(`<span class="tag ${esc(it.type)}">${esc(TYPE_NAME[it.type] || it.type)}</span>`);
     if (it.type === 'family' || it.father === true) t.push('<span class="tag dad">👨 아빠 OK</span>');
     else if (it.type === 'breast') t.push('<span class="tag">엄마 전용</span>');
@@ -724,12 +728,16 @@ function openDetail(id) {
   if (it.place) rows.push(['위치', esc(it.place)]);
   if (it.addr) rows.push(['주소', esc(it.addr)]);
   if (it.kind === 'toilet' && it.open) rows.push(['개방', esc(it.open)]);
+  if (it.gate) rows.push(['개찰구', it.gate === 'in' ? '🎫 개찰구 <b>안</b> (교통카드를 찍고 들어가야 해요)' : '🚪 개찰구 <b>밖</b> (카드 안 찍고 갈 수 있어요)']);
+  if (it.hours) rows.push(['이용 시간', esc(it.hours)]);
+  if (it.how) rows.push(['이용 방법', esc(it.how)]);
   if (it.tel) rows.push(['전화', esc(it.tel)]);
   if (d != null) rows.push(['거리', (state.me ? '내 위치에서 ' : '기준 위치에서 ') + fmtDist(d) + (d <= 3000 ? ` · 걸어서 약 ${walkMin(d)}분` : '') + '<br><small style="color:var(--sub)">직선거리로 어림잡은 시간이에요</small>']);
   if (it.updated) rows.push(['수정일', esc(it.updated)]);
   const tel = telOf(it.tel);
   const hint = it.kind === 'toilet'
     ? '기저귀 교환대가 있는 화장실이에요. 수유실은 아니에요.'
+    : it.hours ? '기관 사정으로 바뀔 수 있으니 방문 전에 확인하면 좋아요.'
     : '운영시간 정보는 없어요. 기관 사정으로 바뀔 수 있으니 방문 전에 전화로 확인하면 좋아요.';
   const fix = it.src === 'sooyusil' && it.roomNo
     ? `<a class="linkish" href="https://sooyusil.com/home/42.htm?roomNo=${encodeURIComponent(it.roomNo)}" target="_blank" rel="noopener">수유정보 알리미에서 사진·물품 보기 / 정보 수정 요청</a>` : '';
@@ -889,7 +897,7 @@ function applyData(d) {
   }
   const n = $('#notice');
   n.style.display = d.sample ? 'block' : 'none';
-  if (d.sample) n.textContent = '지금은 견본 데이터 몇 곳만 보여요. 수유정보 알리미 키가 오면 전국 수유실로 바뀌어요.';
+  if (d.sample) n.textContent = d.note || '지금은 견본 데이터 몇 곳만 보여요. 수유정보 알리미 키가 오면 전국 수유실로 바뀌어요.';
   renderList(); renderMarkers();
 }
 async function loadData(quiet) {

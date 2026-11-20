@@ -22,6 +22,8 @@ jobs:
       - name: 자료 받기
         env:
           SOOYUSIL_KEY: ${{ secrets.SOOYUSIL_KEY }}
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+          KAKAO_REST_KEY: ${{ secrets.KAKAO_REST_KEY }}
         run: python3 scripts/update_data.py
 
       - name: 바뀐 자료 올리기
