@@ -126,8 +126,9 @@
   .modal .x { position: absolute; right: 12px; top: 12px; width: 34px; height: 34px; border-radius: 50%; background: #F5EEEA; font-size: 16px; color: var(--sub); }
   .modal h2 { font-size: 20px; margin: 8px 40px 6px 0; line-height: 1.35; letter-spacing: -0.3px; }
   .modal .row { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; line-height: 1.5; }
-  .modal .row b { flex: none; width: 54px; color: var(--sub); font-weight: 500; }
-  .modal .row span { flex: 1; word-break: keep-all; overflow-wrap: anywhere; }
+  .modal .row > b { flex: none; width: 66px; color: var(--sub); font-weight: 500; white-space: nowrap; }
+  .modal .row > span { flex: 1; word-break: keep-all; overflow-wrap: anywhere; }
+  .tag { white-space: nowrap; }
   .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
   .actions .btn { height: 48px; border-radius: 14px; font-weight: 600; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
   .btn.primary { background: var(--accent); color: #fff; }
@@ -194,7 +195,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '2026.11.20b';
+const APP_VERSION = '2026.11.20c';
 const KAKAO_JS_KEY = 'd34d91c8d1966bf88d70da960b850c56';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청
 const LS_FAV = 'nursing-map-v1-fav';
