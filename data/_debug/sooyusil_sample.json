@@ -1,0 +1,75 @@
+{
+ "checked": "2026-11-24T00:34:40+09:00",
+ "count": 2997,
+ "top_level": {
+  "message": "int",
+  "apiNursingRoomFormVo": "dict",
+  "roomList": "list"
+ },
+ "field_names": [
+  "address",
+  "cityName",
+  "fatherUseCode",
+  "fatherUseNm",
+  "gpsLat",
+  "gpsLong",
+  "location",
+  "managerTelNo",
+  "roomName",
+  "roomNo",
+  "roomTypeCode",
+  "roomTypeName",
+  "townName",
+  "zoneName"
+ ],
+ "first_rows": [
+  {
+   "roomNo": "1",
+   "roomName": "정동진역",
+   "cityName": "강릉시",
+   "zoneName": "강원특별자치도",
+   "townName": "강동면",
+   "roomTypeCode": "4",
+   "roomTypeName": "모유수유/착유실",
+   "managerTelNo": "033-520-2513",
+   "address": "강원특별자치도 강릉시 강동면 정동역길 17 (정동진리, 정동진역)",
+   "location": "1층 안내데스크 오른쪽",
+   "fatherUseCode": "0",
+   "fatherUseNm": "아빠이용불가",
+   "gpsLat": "37.69114127000487",
+   "gpsLong": "129.0330897854846"
+  },
+  {
+   "roomNo": "2",
+   "roomName": "강릉시청",
+   "cityName": "강릉시",
+   "zoneName": "강원특별자치도",
+   "townName": "강릉대로",
+   "roomTypeCode": "4",
+   "roomTypeName": "모유수유/착유실",
+   "managerTelNo": "033-660-2018",
+   "address": "강원특별자치도 강릉시 강릉대로 33 (홍제동, 강릉시청)",
+   "location": "1층 민원실 내에",
+   "fatherUseCode": "0",
+   "fatherUseNm": "아빠이용불가",
+   "gpsLat": "37.7519840157506",
+   "gpsLong": "128.87622976675362"
+  },
+  {
+   "roomNo": "4",
+   "roomName": "홈플러스강릉점",
+   "cityName": "강릉시",
+   "zoneName": "강원특별자치도",
+   "townName": "경강로",
+   "roomTypeCode": "3",
+   "roomTypeName": "가족수유실",
+   "managerTelNo": "033-649-8000",
+   "address": "강원특별자치도 강릉시 경강로 2120 (옥천동, 씨네몰)",
+   "location": "4층 좌측 맨끝으로 있음",
+   "fatherUseCode": "1",
+   "fatherUseNm": "아빠이용가능",
+   "gpsLat": "37.75570337659824",
+   "gpsLong": "128.898680308714"
+  }
+ ]
+}
