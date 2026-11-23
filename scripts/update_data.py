@@ -454,16 +454,18 @@ def merge_metro(soo, sub):
     자세한 정보(개찰구·물품)는 지하철 자료, 정확한 위치와 알리미 번호는 알리미 자료를 씀."""
     by_key = {}
     for i, r in enumerate(soo):
-        m = re.match(r"서울교통공사((?:\d+호선)+)(.+?)$", r["name"].replace(" ", ""))
+        m = re.match(r"서울교통공사((?:\d+호선)*)(.+?)$", r["name"].replace(" ", ""))
         if m:
-            for ln in re.findall(r"\d+호선", m.group(1)):   # '5호선8호선천호역'처럼 환승역은 노선이 여러 개
+            lines = re.findall(r"\d+호선", m.group(1)) or ["*"]   # 환승역은 노선이 여러 개, 노선이 없으면 아무 노선
+            for ln in lines:
                 by_key.setdefault((ln, m.group(2).rstrip("역")), []).append(i)
     drop = set()
     for x in sub:
         line = re.search(r"\((\d+호선)\)", x["name"])
         stn = re.sub(r"\s*수유실.*", "", x["name"]).rstrip("역")
         stn = {"뚝섬유원지": "자양"}.get(stn, stn)   # 역 이름이 바뀐 곳
-        idx = [i for i in by_key.get((line.group(1) if line else "", stn), []) if i not in drop]
+        cand = by_key.get((line.group(1) if line else "", stn), []) + by_key.get(("*", stn), [])
+        idx = [i for i in cand if i not in drop]
         if not idx:
             continue
         i = idx[0]
@@ -477,11 +479,11 @@ def merge_metro(soo, sub):
     kept = [r for i, r in enumerate(soo) if i not in drop]
     # 남은 '서울교통공사N호선OO역' 이름은 읽기 쉽게: "OO역 수유실 (N호선)"
     for r in kept:
-        m = re.match(r"서울교통공사((?:\d+호선)+)(.+?)$", r["name"].replace(" ", ""))
+        m = re.match(r"서울교통공사((?:\d+호선)*)(.+?)$", r["name"].replace(" ", ""))
         if m:
             st = m.group(2) if m.group(2).endswith("역") else m.group(2) + "역"
             lines = "·".join(re.findall(r"\d+호선", m.group(1)))
-            r["name"] = f"{st} 수유실 ({lines})"
+            r["name"] = f"{st} 수유실" + (f" ({lines})" if lines else "")
     log(f"알리미·지하철 같은 수유실 {len(drop)}곳 합침")
     return kept, sub
 
