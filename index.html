@@ -206,7 +206,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '2026.11.24';
+const APP_VERSION = '2026.11.24b';
 const KAKAO_JS_KEY = 'd34d91c8d1966bf88d70da960b850c56';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청
 const LS_FAV = 'nursing-map-v1-fav';
@@ -295,8 +295,10 @@ function tagsHtml(it) {
     if (it.gate === 'in') t.push('<span class="tag gate-in">🎫 개찰구 안</span>');
     else if (it.gate === 'out') t.push('<span class="tag gate-out">🚪 개찰구 밖</span>');
     if (it.type) t.push(`<span class="tag ${esc(it.type)}">${esc(TYPE_NAME[it.type] || it.type)}</span>`);
-    if (it.type === 'family' || it.father === true) t.push('<span class="tag dad">👨 아빠 OK</span>');
-    else if (it.type === 'breast') t.push('<span class="tag">엄마 전용</span>');
+    // 알리미의 '아빠 이용 가능' 값을 먼저 따르고, 값이 없으면 종류로 판단 (예외 2곳 있음)
+    const dad = it.father === true || (it.father == null && it.type === 'family');
+    if (dad) t.push('<span class="tag dad">👨 아빠 OK</span>');
+    else if (it.father === false || it.type === 'breast') t.push('<span class="tag">엄마 전용</span>');
   }
   if (state.favs.has(it.id)) t.push('<span class="tag">⭐ 즐겨찾기</span>');
   return t.join('');
