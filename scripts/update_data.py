@@ -449,6 +449,43 @@ def update_sooyusil(key):
     return sorted(rooms, key=lambda x: x["id"])
 
 
+def merge_metro(soo, sub):
+    """알리미의 '서울교통공사N호선OO역'과 지하철 자료가 같은 수유실이면 하나로 합침.
+    자세한 정보(개찰구·물품)는 지하철 자료, 정확한 위치와 알리미 번호는 알리미 자료를 씀."""
+    by_key = {}
+    for i, r in enumerate(soo):
+        m = re.match(r"서울교통공사((?:\d+호선)+)(.+?)$", r["name"].replace(" ", ""))
+        if m:
+            for ln in re.findall(r"\d+호선", m.group(1)):   # '5호선8호선천호역'처럼 환승역은 노선이 여러 개
+                by_key.setdefault((ln, m.group(2).rstrip("역")), []).append(i)
+    drop = set()
+    for x in sub:
+        line = re.search(r"\((\d+호선)\)", x["name"])
+        stn = re.sub(r"\s*수유실.*", "", x["name"]).rstrip("역")
+        stn = {"뚝섬유원지": "자양"}.get(stn, stn)   # 역 이름이 바뀐 곳
+        idx = [i for i in by_key.get((line.group(1) if line else "", stn), []) if i not in drop]
+        if not idx:
+            continue
+        i = idx[0]
+        drop.add(i)
+        s_ = soo[i]
+        x["lat"], x["lng"] = s_["lat"], s_["lng"]
+        x["roomNo"] = s_.get("roomNo", "")
+        if not x.get("tel"):
+            x["tel"] = s_.get("tel", "")
+        x["addr"] = s_.get("addr") or x["addr"]
+    kept = [r for i, r in enumerate(soo) if i not in drop]
+    # 남은 '서울교통공사N호선OO역' 이름은 읽기 쉽게: "OO역 수유실 (N호선)"
+    for r in kept:
+        m = re.match(r"서울교통공사((?:\d+호선)+)(.+?)$", r["name"].replace(" ", ""))
+        if m:
+            st = m.group(2) if m.group(2).endswith("역") else m.group(2) + "역"
+            lines = "·".join(re.findall(r"\d+호선", m.group(1)))
+            r["name"] = f"{st} 수유실 ({lines})"
+    log(f"알리미·지하철 같은 수유실 {len(drop)}곳 합침")
+    return kept, sub
+
+
 def main():
     old = {}
     if os.path.exists(OUT):
@@ -474,7 +511,8 @@ def main():
             log("DATA_GO_KR_KEY 가 없어서 지하철 자료는 그대로 둡니다.")
 
     real = bool(soo)
-    rooms = list(soo) + list(sub)
+    soo, sub = merge_metro(list(soo), list(sub))
+    rooms = soo + sub
     if not real:
         # 알리미 자료가 오기 전: 견본은 남기되, 진짜 지하철 자료가 있으면 견본 지하철은 뺌
         rooms = [x for x in old_rooms if x.get("src") == "sample" and not (sub and x.get("kind") == "subway")] + rooms

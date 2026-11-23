@@ -206,7 +206,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '2026.11.20e';
+const APP_VERSION = '2026.11.24';
 const KAKAO_JS_KEY = 'd34d91c8d1966bf88d70da960b850c56';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청
 const LS_FAV = 'nursing-map-v1-fav';
@@ -291,7 +291,7 @@ function tagsHtml(it) {
   const t = [];
   if (it.kind === 'toilet') t.push('<span class="tag toilet">🚼 기저귀 교환대 화장실</span>');
   else {
-    if (it.kind === 'subway') t.push('<span class="tag subway">🚇 지하철역</span>');
+    if (it.kind === 'subway') t.push(it.src === 'seoulmetro' ? '<span class="tag subway">🚇 지하철역</span>' : '<span class="tag subway">🚉 역</span>');
     if (it.gate === 'in') t.push('<span class="tag gate-in">🎫 개찰구 안</span>');
     else if (it.gate === 'out') t.push('<span class="tag gate-out">🚪 개찰구 밖</span>');
     if (it.type) t.push(`<span class="tag ${esc(it.type)}">${esc(TYPE_NAME[it.type] || it.type)}</span>`);
@@ -818,11 +818,11 @@ function openInfo() {
       <div class="legend">
         <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--family);display:inline-block"></i>가족수유실 · 아빠도 들어갈 수 있어요</div>
         <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--breast);display:inline-block"></i>모유수유·착유실 · 엄마 전용</div>
-        <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--subway);display:inline-block"></i>지하철역 수유실</div>
+        <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--subway);display:inline-block"></i>역(지하철·기차) 수유실</div>
         <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--toilet);display:inline-block"></i>기저귀 교환대 화장실</div>
         <div><i class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--fav);display:inline-block"></i>즐겨찾기</div>
       </div>
-      <p>수유실 ${cnt('room')}곳 · 지하철역 ${cnt('subway')}곳 · 기저귀 화장실 ${cnt('toilet')}곳</p>
+      <p>수유실 ${cnt('room')}곳 · 역 ${cnt('subway')}곳 · 기저귀 화장실 ${cnt('toilet')}곳</p>
       <p>자료 기준일: ${esc(d.updated || '-')}${d.sample ? ' (견본 데이터)' : ''}</p>
       <p style="color:var(--sub);font-size:13px">자료: 수유정보 알리미(보건복지부·인구보건복지협회), 서울교통공사, 지자체 공중화장실 공공데이터. 실제와 다를 수 있으니 방문 전에 확인해 주세요. 즐겨찾기는 이 폰에만 저장돼요.</p>
       <div class="ver">버전 ${APP_VERSION}</div>
