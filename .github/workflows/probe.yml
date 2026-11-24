@@ -1,0 +1,14 @@
+name: 자료 주소 확인 (임시)
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 공중화장실 파일 확인
+        run: |
+          U="https://file.localdata.go.kr/file/public_restroom_info/info"
+          curl -sS -L -D - -o /tmp/f -A "Mozilla/5.0" --max-time 120 "$U" | head -40 || true
+          ls -l /tmp/f; file /tmp/f
+          head -c 1500 /tmp/f | iconv -f cp949 -t utf-8 -c || true
+          echo; echo ---- utf8 ----; head -c 1500 /tmp/f || true
+          if file /tmp/f | grep -qi zip; then mkdir z; cd z; unzip -o /tmp/f >/dev/null; ls -l; for x in *; do echo "== $x"; head -3 "$x" | iconv -f cp949 -t utf-8 -c; done; fi
