@@ -206,7 +206,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '2026.11.24c';
+const APP_VERSION = '2026.11.24d';
 const KAKAO_JS_KEY = 'd34d91c8d1966bf88d70da960b850c56';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청
 const LS_FAV = 'nursing-map-v1-fav';
@@ -349,8 +349,8 @@ function renderList() {
     const hasAny = state.items.some((it) => it.kind === 'toilet');
     const nearest = arr.length ? arr[0].d : Infinity;
     if (!hasAny) top = '<div class="note">기저귀 교환대 화장실 자료를 준비하고 있어요.</div>';
-    else if (!state.query && nearest > 5000) top = '<div class="note">이 근처는 아직 기저귀 화장실 자료가 없어요. 지금은 일부 지역(경기·제주·서울 지하철역 등)만 있어요. 수유실에도 대부분 기저귀 교환대가 있어요.</div>';
-    else top = '<div class="note" style="background:#F2FAF8;color:#2C6B60">기저귀 교환대가 있는 공중화장실이에요. 수유실은 아니에요.</div>';
+    else if (!state.query && nearest > 5000) top = '<div class="note">이 근처에는 기저귀 교환대가 등록된 공중화장실이 없어요. 수유실에도 대부분 기저귀 교환대가 있어요.</div>';
+    else top = '<div class="note" style="background:#F2FAF8;color:#2C6B60">기저귀 교환대가 있는 공중화장실이에요. 수유실은 아니에요. (지자체가 등록한 정보라 실제와 다를 수 있어요)</div>';
   }
 
   const list = $('#list');
