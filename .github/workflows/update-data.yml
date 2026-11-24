@@ -36,5 +36,6 @@ jobs:
             echo "바뀐 자료가 없어요"
           else
             git commit -m "수유실 자료 자동 업데이트 $(TZ=Asia/Seoul date +%F)"
+            git pull --rebase origin main   # 그사이 앱 코드가 올라왔어도 자료 올리기가 실패하지 않게
             git push
           fi
