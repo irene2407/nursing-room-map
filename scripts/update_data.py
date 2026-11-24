@@ -8,6 +8,7 @@ GitHub Actions에서 한 달에 한 번 돌아간다. 키는 환경변수(GitHub
 data/_debug/sooyusil_sample.json 에 남긴다 (공개 정보만, 키는 남기지 않음).
 """
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -424,6 +425,120 @@ def update_subway(key, kakao_key):
     return out
 
 
+# ---------------------------------------------------------------- 기저귀 교환대 화장실
+TOILET_CSV = "https://file.localdata.go.kr/file/download/public_restroom_info/info"
+TOILET_COORDS = os.path.join(ROOT, "data", "toilet_coords.json")
+
+
+def download_toilet_csv():
+    import csv, io
+    req = urllib.request.Request(TOILET_CSV, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://file.localdata.go.kr/file/public_restroom_info/info"})
+    try:
+        with urllib.request.urlopen(req, timeout=300) as r:
+            raw = r.read()
+    except Exception as e:
+        raise RuntimeError(f"화장실 파일 받기 실패: {type(e).__name__} {getattr(e, 'code', '')}") from None
+    for enc in ("utf-8-sig", "cp949"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        text = raw.decode("utf-8", "replace")
+    return list(csv.DictReader(io.StringIO(text)))
+
+
+def kakao_geocode(addr, name, kakao_key):
+    """주소 → 좌표. 주소 검색이 안 되면 '화장실 이름 + 시군구'로 장소 검색."""
+    hdr = {"Authorization": "KakaoAK " + kakao_key}
+    url = "https://dapi.kakao.com/v2/local/search/address.json?" + urllib.parse.urlencode({"query": addr, "size": 1})
+    r = http_json(url, headers=hdr, secrets=(kakao_key,))
+    docs = r.get("documents") or []
+    if docs:
+        return [round(float(docs[0]["y"]), 6), round(float(docs[0]["x"]), 6), "addr"]
+    region = " ".join(addr.split()[:2])
+    url = "https://dapi.kakao.com/v2/local/search/keyword.json?" + urllib.parse.urlencode({"query": f"{region} {name}".strip(), "size": 1})
+    r = http_json(url, headers=hdr, secrets=(kakao_key,))
+    docs = r.get("documents") or []
+    if docs:
+        return [round(float(docs[0]["y"]), 6), round(float(docs[0]["x"]), 6), "kw"]
+    return None
+
+
+def update_toilets(kakao_key, max_new=20000):
+    rows = download_toilet_csv()
+    yes = [r for r in rows if str(r.get("기저귀교환대유무", "")).strip().upper() == "Y"]
+    log(f"공중화장실 {len(rows)}곳 중 기저귀 교환대 있는 곳 {len(yes)}곳")
+    write_debug(yes[:200], {"columns": list(rows[0].keys()) if rows else []}, "toilet_sample.json", {"total": len(rows), "diaper_yes": len(yes)})
+    cache = {}
+    if os.path.exists(TOILET_COORDS):
+        with open(TOILET_COORDS, encoding="utf-8") as f:
+            cache = json.load(f)
+    if not kakao_key:
+        log("KAKAO_REST_KEY 가 없어서 새 화장실 좌표는 못 찾아요.")
+    out, new, fail, stopped = [], 0, 0, False
+    started = time.time()
+    for r in yes:
+        road = str(r.get("소재지도로명주소", "")).strip()
+        jibun = str(r.get("소재지지번주소", "")).strip()
+        addr = road or jibun
+        name = str(r.get("화장실명", "")).strip()
+        if not addr:
+            continue
+        key = addr + "|" + name
+        c = cache.get(key)
+        if c is None and kakao_key and not stopped:
+            if new >= max_new or time.time() - started > 40 * 60:
+                stopped = True
+                log("이번에는 여기까지 (다음 실행 때 이어서 좌표를 찾아요)")
+            else:
+                try:
+                    c = kakao_geocode(road, name, kakao_key) if road else None
+                    if not c and jibun and jibun != road:
+                        c = kakao_geocode(jibun, name, kakao_key)
+                except RuntimeError as e:
+                    log("  좌표 찾기 오류:", e)
+                    if "HTTP 4" in str(e) and "429" not in str(e):
+                        stopped = True
+                    c = None
+                cache[key] = c or 0   # 못 찾은 곳은 0으로 표시해 다시 묻지 않음
+                new += 1
+                if not c:
+                    fail += 1
+                time.sleep(0.06)
+        if not c:
+            continue
+        hours = str(r.get("개방시간", "")).strip()
+        detail = str(r.get("개방시간상세", "")).strip()
+        open_txt = {"상시": "24시간 (상시)", "정시": "정해진 시간"}.get(hours, hours)
+        if detail:
+            open_txt = (open_txt + " · " + detail).strip(" ·")
+        place = str(r.get("기저귀교환대장소", "")).strip()
+        out.append({
+            "id": "t" + (str(r.get("관리번호", "")).strip() or hashlib.md5(key.encode()).hexdigest()[:12]),
+            "kind": "toilet",
+            "name": name or "공중화장실",
+            "addr": addr,
+            "place": ("기저귀 교환대: " + place) if place else "",
+            "open": open_txt,
+            "tel": fmt_tel(r.get("전화번호", "")),
+            "lat": c[0], "lng": c[1],
+            "region": " ".join(addr.split()[:2]),
+            "src": "localdata",
+        })
+    with open(TOILET_COORDS, "w", encoding="utf-8") as f:
+        json.dump(cache, f, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    log(f"기저귀 화장실 {len(out)}곳 지도에 표시 (새로 좌표 찾음 {new}곳, 못 찾음 {fail}곳)")
+    # id 중복 정리
+    seen, uniq = set(), []
+    for t in out:
+        if t["id"] in seen:
+            continue
+        seen.add(t["id"]); uniq.append(t)
+    return uniq
+
+
 # ---------------------------------------------------------------- 알리미
 def update_sooyusil(key):
     try:
@@ -518,7 +633,13 @@ def main():
     if not real:
         # 알리미 자료가 오기 전: 견본은 남기되, 진짜 지하철 자료가 있으면 견본 지하철은 뺌
         rooms = [x for x in old_rooms if x.get("src") == "sample" and not (sub and x.get("kind") == "subway")] + rooms
-    toilets = [x for x in old.get("toilets", []) if (x.get("src") != "sample" or not real)]
+    toilets = None
+    try:
+        toilets = update_toilets(kakao_key)
+    except RuntimeError as e:
+        log("화장실 자료를 받지 못했어요:", e)
+    if toilets is None or (not toilets and old.get("toilets")):
+        toilets = [x for x in old.get("toilets", []) if (x.get("src") != "sample" or not real)]
 
     if sub and not real:
         note = "서울 지하철역 수유실은 실제 자료예요. 다른 곳은 아직 견본 데이터 몇 곳만 있어요."
