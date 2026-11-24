@@ -4,11 +4,17 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: 공중화장실 파일 확인
+      - name: 공중화장실 파일·API 확인
+        env:
+          K: ${{ secrets.DATA_GO_KR_KEY }}
         run: |
-          U="https://file.localdata.go.kr/file/public_restroom_info/info"
-          curl -sS -L -D - -o /tmp/f -A "Mozilla/5.0" --max-time 120 "$U" | head -40 || true
-          ls -l /tmp/f; file /tmp/f
-          head -c 1500 /tmp/f | iconv -f cp949 -t utf-8 -c || true
-          echo; echo ---- utf8 ----; head -c 1500 /tmp/f || true
-          if file /tmp/f | grep -qi zip; then mkdir z; cd z; unzip -o /tmp/f >/dev/null; ls -l; for x in *; do echo "== $x"; head -3 "$x" | iconv -f cp949 -t utf-8 -c; done; fi
+          for U in "https://file.localdata.go.kr/file/download/public_restroom_info/info" "https://file.localdata.go.kr/file/download/public_restroom_info/info?orgCode=6410000"; do
+            echo "##### $U"
+            curl -sS -L -D - -o /tmp/f -A "Mozilla/5.0" -e "https://file.localdata.go.kr/file/public_restroom_info/info" --max-time 180 "$U" | grep -iE "^HTTP|content-type|content-disposition|content-length|location" || true
+            ls -l /tmp/f; file /tmp/f
+            if file /tmp/f | grep -qi zip; then rm -rf z; mkdir z; (cd z; unzip -o /tmp/f >/dev/null; ls -l; for x in *; do echo "== $x"; head -3 "$x" | iconv -f cp949 -t utf-8 -c | cut -c1-700; wc -l "$x"; done); else head -3 /tmp/f | iconv -f cp949 -t utf-8 -c | cut -c1-700; fi
+          done
+          for P in "1741000/public_restroom_info/info" "1741000/public_restroom_info/getPublicRestroomInfo"; do
+            echo "##### API $P"
+            curl -sS --max-time 60 -G "https://apis.data.go.kr/$P" --data-urlencode "serviceKey=$K" -d "pageNo=1" -d "numOfRows=2" -d "returnType=json" | head -c 1500; echo
+          done
